@@ -431,8 +431,21 @@ app.get('/api/notifications/stream', authRequired, (req, res) => {
 // ─────────── Serve the built frontend in production (single Render service) ───────────
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
 if (process.env.NODE_ENV === 'production' && fs.existsSync(frontendDist)) {
-  app.use(express.static(frontendDist));
-  app.get(/^(?!\/api|\/health).*/, (_req, res) => res.sendFile(path.join(frontendDist, 'index.html')));
+  // Vite hashes JS/CSS filenames, so those can be cached forever — but
+  // index.html itself must always be revalidated, or browsers can keep
+  // serving a stale shell that points at an old (deleted) bundle hash.
+  app.use(express.static(frontendDist, {
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
+  app.get(/^(?!\/api|\/health).*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
 }
 
 // Final error handler — anything ah() forwarded, or a body-parser JSON error.
