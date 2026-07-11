@@ -1,0 +1,182 @@
+// MediFlow Operations — data model
+// Mirrors the shapes the frontend already expects (see ../server.js history)
+// plus real accounts/auth and admin-pinned map locations on Task.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../generated/prisma"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Department {
+  linen
+  transport
+  discharge
+  imaging
+  events
+  security
+}
+
+enum Role {
+  admin
+  worker
+}
+
+enum Priority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum LeaveStatus {
+  pending
+  approved
+  declined
+}
+
+enum BinStatus {
+  empty
+  medium
+  full
+}
+
+enum NotificationKind {
+  break
+  bin
+}
+
+enum NotificationStatus {
+  sent
+  acknowledged
+  resolved
+}
+
+model Account {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  passwordHash String
+  role         Role
+  department   Department
+  worker       Worker?    @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  workerId     String?    @unique
+  createdAt    DateTime   @default(now())
+}
+
+model Worker {
+  id            String          @id @default(cuid())
+  name          String
+  role          String          @default("")
+  zone          String          @default("")
+  shift         String          @default("")
+  phone         String          @default("")
+  status        String          @default("idle")
+  clockedInAt   DateTime?
+  department    Department
+  account       Account?
+  tasks         Task[]
+  leaves        Leave[]
+  availability  Availability[]
+  hoursLog      HoursLog[]
+  notifications Notification[]
+  createdAt     DateTime        @default(now())
+}
+
+model Task {
+  id           String     @id @default(cuid())
+  title        String
+  area         String     @default("")
+  priority     Priority   @default(normal)
+  assignedTo   Worker?    @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToId String?
+  done         Boolean    @default(false)
+  easyWay      String     @default("")
+  department   Department
+  pinId        String?
+  createdAt    DateTime   @default(now())
+}
+
+model Leave {
+  id        String      @id @default(cuid())
+  worker    Worker      @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  workerId  String
+  type      String
+  startDate String
+  endDate   String
+  reason    String      @default("")
+  status    LeaveStatus @default(pending)
+  createdAt DateTime    @default(now())
+}
+
+model Availability {
+  id        String   @id @default(cuid())
+  worker    Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  workerId  String
+  date      String
+  from      String   @default("")
+  to        String   @default("")
+  note      String   @default("")
+  createdAt DateTime @default(now())
+}
+
+model HoursLog {
+  id       String @id @default(cuid())
+  worker   Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  workerId String
+  date     String
+  hours    Float
+
+  @@unique([workerId, date])
+}
+
+model NightManager {
+  department Department @id
+  name       String     @default("")
+  role       String     @default("")
+  phone      String     @default("")
+  location   String     @default("")
+}
+
+model Closure {
+  id         String   @id @default(cuid())
+  title      String
+  message    String
+  department String   @default("all") // Department id, or "all"
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}
+
+model DeptSetting {
+  department     Department @id
+  showWardRounds Boolean    @default(false)
+}
+
+model Bin {
+  id            String          @id
+  name          String
+  floor         String
+  area          String
+  fillLevel     Int             @default(0)
+  status        BinStatus       @default(empty)
+  notifications Notification[]
+}
+
+model Notification {
+  id        String             @id @default(cuid())
+  kind      NotificationKind
+  worker    Worker?            @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  workerId  String?
+  bin       Bin?               @relation(fields: [binId], references: [id], onDelete: SetNull)
+  binId     String?
+  binName   String?
+  floor     String?
+  area      String?
+  message   String
+  status    NotificationStatus @default(sent)
+  timestamp DateTime           @default(now())
+}
