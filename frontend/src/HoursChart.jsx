@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { HOURS_RAMP, hoursCellColor as cellColor, hoursCellText as cellText } from './theme.js';
 
 const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -9,6 +9,15 @@ const pad = (n) => String(n).padStart(2, '0');
 export default function HoursChart({ entries = [], worker = null, onClock }) {
   const now = new Date();
   const [view, setView] = useState({ y: now.getFullYear(), m: now.getMonth() });
+
+  // Force a re-render once a minute so the live "Running for Xh Ym" label
+  // actually ticks forward instead of freezing at whatever it was on mount.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (!worker?.clockedInAt) return;
+    const id = setInterval(() => forceTick(t => t + 1), 30000);
+    return () => clearInterval(id);
+  }, [worker?.clockedInAt]);
 
   const byDate = useMemo(() => new Map(entries.map(e => [e.date, e.hours])), [entries]);
 
@@ -41,7 +50,12 @@ export default function HoursChart({ entries = [], worker = null, onClock }) {
   const clockedIn = !!worker?.clockedInAt;
   let elapsedLabel = '';
   if (clockedIn) {
-    const ms = Date.now() - new Date(worker.clockedInAt).getTime();
+    // Clamp to 0: the server sets clockedInAt, so a few seconds of clock
+    // skew between server and client can make this render briefly
+    // negative right after clocking in. JS % keeps the dividend's sign,
+    // so an unclamped negative ms produces a nonsensical label like
+    // '-1h -1m' instead of something sane.
+    const ms = Math.max(0, Date.now() - new Date(worker.clockedInAt).getTime());
     elapsedLabel = `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`;
   }
 
