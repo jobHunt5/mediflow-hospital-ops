@@ -61,7 +61,7 @@ export default function Login({ onLogin }) {
       </button>
       <div className="login-card">
         <div className="login-brand">
-          <MonashLogo size={38} subtitle="MediFlow Operations" />
+          <MonashLogo size={38} subtitle="Monash Health Operations" />
         </div>
 
         {!role && (
