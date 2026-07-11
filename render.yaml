@@ -2,13 +2,14 @@ databases:
   - name: mediflow-db
     databaseName: mediflow
     user: mediflow
+    region: oregon
     plan: free
 
 services:
   - type: web
     name: mediflow
     runtime: node
-    region: singapore
+    region: oregon
     plan: free
     buildCommand: cd backend && npm install && cd ../frontend && npm install --include=dev && npm run build
     startCommand: cd backend && npm run db:deploy && npm start
