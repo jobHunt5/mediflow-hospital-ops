@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { WARDS, GENERAL_TASKS, ALL_TASKS, TOTAL_TASKS, useRounds } from './rounds.js';
 import { LIFT_BADGE, STATUS, BRAND_BLUE, BRAND_NAVY, BRAND_SKY, PRIORITY_COLOR } from './theme.js';
+import { useGeolocation, GEOFENCE_M } from './useGeolocation.js';
 
 // ══════════════════════════════════════════════════════════════════════
 // MONASH MEDICAL CENTRE — CLAYTON · CLEANING ROUNDS FLOOR MAP
@@ -342,8 +343,11 @@ const GUIDES = [
 // ─── Geometry + graph helpers ───
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const fmtDist = (px) => { const m = px * M_PER_PX; return m >= 100 ? `${Math.round(m)} m` : `${m.toFixed(1)} m`; };
-const fmtTime = (px) => {
-  const s = Math.round((px * M_PER_PX) / WALK_SPEED);
+// Optional speedMps overrides the fixed walking-pace assumption with the
+// user's own real live-measured speed (from GPS), when we have a sane one.
+const fmtTime = (px, speedMps) => {
+  const speed = speedMps && speedMps > 0.1 ? speedMps : WALK_SPEED;
+  const s = Math.round((px * M_PER_PX) / speed);
   const mm = Math.floor(s / 60), ss = s % 60;
   return mm > 0 ? `${mm}m ${ss}s` : `${ss}s`;
 };
@@ -680,6 +684,11 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
   const [search, setSearch] = useState('');
   const [searchHit, setSearchHit] = useState(null); // { label, floor } — briefly highlighted
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile-only slide-over
+  const [locationEnabled, setLocationEnabled] = useState(false);
+  const geo = useGeolocation(locationEnabled);
+  const liveSpeedMps = geo.status === 'granted' && geo.speedKmh != null && geo.speedKmh >= 0.5 && geo.speedKmh <= 9
+    ? geo.speedKmh / 3.6
+    : null;
   const dragRef = useRef(null);
   const wrapRef = useRef(null);
 
@@ -829,7 +838,13 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
     el.addEventListener('wheel', fn, { passive: false });
     return () => el.removeEventListener('wheel', fn);
   }, []);
-  const onMD = e => { setDrag(true); dragRef.current = { sx: e.clientX - pan.x, sy: e.clientY - pan.y, moved: false }; };
+  // Pointer Events (not mouse events) so this works for touch and pen too,
+  // not just a mouse — mouse-only handlers never fire on a phone/tablet drag.
+  const onMD = e => {
+    setDrag(true);
+    dragRef.current = { sx: e.clientX - pan.x, sy: e.clientY - pan.y, moved: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
   const onMM = e => { if (drag && dragRef.current) { dragRef.current.moved = true; setPan({ x: e.clientX - dragRef.current.sx, y: e.clientY - dragRef.current.sy }); } };
   const onMU = () => setDrag(false);
   // Fit the whole floor plan inside the visible viewport by default (desktop
@@ -905,6 +920,44 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
           )}
         </div>
 
+        {/* Live location — real GPS, real speed, geofenced to the hospital's
+            real coordinates. Not plotted on the map itself: this floor plan
+            is hand-drawn and doesn't preserve real angles/distances closely
+            enough to place a GPS dot on it without it landing somewhere
+            misleading. */}
+        <div className="cm-geo-card">
+          <div className="cm-route-title">📍 Live Location</div>
+          {!locationEnabled && (
+            <button className="cm-geo-enable" onClick={() => setLocationEnabled(true)}>
+              Turn on live location
+            </button>
+          )}
+          {locationEnabled && geo.status === 'unsupported' && (
+            <div className="cm-geo-msg">Your browser doesn't support location services.</div>
+          )}
+          {locationEnabled && geo.status === 'requesting' && (
+            <div className="cm-geo-msg">Requesting permission…</div>
+          )}
+          {locationEnabled && geo.status === 'denied' && (
+            <div className="cm-geo-msg">Location permission denied — enable it in your browser's site settings to use this.</div>
+          )}
+          {locationEnabled && geo.status === 'error' && (
+            <div className="cm-geo-msg">Couldn't get a location fix ({geo.error || 'unknown error'}).</div>
+          )}
+          {locationEnabled && geo.status === 'granted' && (
+            <div className="cm-geo-live">
+              <div className={`cm-geo-badge ${geo.atHospital ? 'here' : ''}`}>
+                {geo.atHospital ? '● At Monash Medical Centre' : `● ${Math.round(geo.distanceToHospitalM)} m from the hospital`}
+              </div>
+              <div className="cm-geo-stats">
+                <div><span className="cm-stat-num">{geo.speedKmh != null ? geo.speedKmh.toFixed(1) : '—'}</span><span className="cm-stat-lbl">km/h</span></div>
+                <div><span className="cm-stat-num">±{Math.round(geo.position?.accuracy || 0)}</span><span className="cm-stat-lbl">m accuracy</span></div>
+              </div>
+              <div className="cm-geo-note">GPS is only reliable outdoors — accuracy drops or drops out once you're inside. Distances above are real-world straight-line, not the walking route.</div>
+            </div>
+          )}
+        </div>
+
         {/* Route planner */}
         <div className="cm-route-card">
           <div className="cm-route-title">🧭 Route Planner <span className="cm-route-hint">any level → any level</span></div>
@@ -921,7 +974,7 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
           {route && (
             <div className="cm-route-stats">
               <div><span className="cm-stat-num">{fmtDist(route.length)}</span><span className="cm-stat-lbl">distance</span></div>
-              <div><span className="cm-stat-num">{fmtTime(route.length)}</span><span className="cm-stat-lbl">walk time</span></div>
+              <div><span className="cm-stat-num">{fmtTime(route.length, liveSpeedMps)}</span><span className="cm-stat-lbl">walk time{liveSpeedMps ? " · your pace" : ""}</span></div>
             </div>
           )}
           {transfers.length > 0 && (
@@ -1040,7 +1093,7 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
 
         <div className="cm-toolbar">
           <div className="cm-toolbar-title">{floor.label} — Monash Medical Centre, Clayton</div>
-          {route && <span className="cm-route-badge">🧭 {fmtDist(route.length)} · {fmtTime(route.length)}</span>}
+          {route && <span className="cm-route-badge">🧭 {fmtDist(route.length)} · {fmtTime(route.length, liveSpeedMps)}</span>}
           {showRounds && (
             <div className="cm-legend">
               {Object.entries(LIFTS).map(([k, v]) => (
@@ -1057,8 +1110,8 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
           </div>
         </div>
 
-        <div ref={wrapRef} className="cm-viewport" onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU} onMouseLeave={onMU}
-          style={{ cursor: drag ? 'grabbing' : 'grab' }}>
+        <div ref={wrapRef} className="cm-viewport" onPointerDown={onMD} onPointerMove={onMM} onPointerUp={onMU} onPointerCancel={onMU} onPointerLeave={onMU}
+          style={{ cursor: drag ? 'grabbing' : 'grab', touchAction: 'none' }}>
           <div className="cm-stage" style={{ transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})`, width: IMG_W, height: IMG_H, transition: drag ? 'none' : 'transform 0.08s ease' }}>
             <FloorPlan floor={activeFloor} rooms={floorRooms} showLifts={showLifts} showPaths={showPaths}
               onRoomClick={onRoomClick} hover={hover} setHover={setHover} from={from} to={to} route={floorRoute}
@@ -1174,6 +1227,15 @@ const CM_CSS = `
 .cm-search-result-floor{font-size:9.5px;font-weight:800;color:var(--text-secondary);background:var(--bg-primary);padding:2px 7px;border-radius:20px;flex-shrink:0;}
 .cm-search-empty{padding:10px;font-size:12px;color:var(--text-muted);text-align:center;}
 .cm-route-card{background:var(--bg-elevated);border:1px solid var(--border-color);border-radius:12px;padding:13px;}
+.cm-geo-card{background:var(--bg-elevated);border:1px solid var(--border-color);border-radius:12px;padding:13px;display:flex;flex-direction:column;gap:9px;}
+.cm-geo-enable{background:var(--accent-color);color:var(--text-on-accent);border:none;border-radius:10px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s;}
+.cm-geo-enable:hover{background:var(--accent-dark);}
+.cm-geo-msg{font-size:11.5px;color:var(--text-muted);line-height:1.5;}
+.cm-geo-live{display:flex;flex-direction:column;gap:9px;}
+.cm-geo-badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--text-secondary);width:fit-content;}
+.cm-geo-badge.here{color:var(--color-success-ink);}
+.cm-geo-stats{display:flex;gap:18px;}
+.cm-geo-note{font-size:10px;color:var(--text-muted);line-height:1.5;}
 .cm-route-title{font-weight:800;font-size:12.5px;margin-bottom:10px;color:var(--accent-dark);letter-spacing:-0.01em;}
 .cm-route-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
 .cm-ab{width:19px;height:19px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:var(--text-on-accent);flex-shrink:0;}
