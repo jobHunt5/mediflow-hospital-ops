@@ -832,8 +832,22 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
   const onMD = e => { setDrag(true); dragRef.current = { sx: e.clientX - pan.x, sy: e.clientY - pan.y, moved: false }; };
   const onMM = e => { if (drag && dragRef.current) { dragRef.current.moved = true; setPan({ x: e.clientX - dragRef.current.sx, y: e.clientY - dragRef.current.sy }); } };
   const onMU = () => setDrag(false);
-  const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
+  // Fit the whole floor plan inside the visible viewport by default (desktop
+  // still gets 100%, since we never scale up past 1) instead of always
+  // opening at 100% zoom, which on a phone only shows a small cropped corner.
+  const resetView = () => {
+    const el = wrapRef.current;
+    if (!el || !el.clientWidth) { setZoom(1); setPan({ x: 0, y: 0 }); return; }
+    const fit = Math.min(el.clientWidth / IMG_W, el.clientHeight / IMG_H, 1);
+    setZoom(fit);
+    setPan({ x: (el.clientWidth - IMG_W * fit) / 2, y: (el.clientHeight - IMG_H * fit) / 2 });
+  };
   useEffect(() => { setSelectedWard(null); resetView(); }, [activeFloor]);
+  useEffect(() => {
+    window.addEventListener('resize', resetView);
+    return () => window.removeEventListener('resize', resetView);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const rounds = useMemo(() => {
     const wardTasks = WARDS.flatMap(w => w.tasks.map(t => ({ ...t, wardKey: w.key, wardName: w.name, floor: w.floor })));
@@ -853,9 +867,11 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
     <div className="cm-shell">
       <style>{CM_CSS}</style>
 
-      <button className="cm-sidebar-toggle" onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle wayfinding panel">
-        {sidebarOpen ? '✕ Close' : '☰ Wayfinding & rounds'}
-      </button>
+      {!sidebarOpen && (
+        <button className="cm-sidebar-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open wayfinding panel">
+          ☰ Wayfinding & rounds
+        </button>
+      )}
       {sidebarOpen && <div className="cm-sidebar-scrim" onClick={() => setSidebarOpen(false)} />}
 
       {/* ══ SIDEBAR ══ */}
@@ -1133,7 +1149,7 @@ function RoundGroup({ title, tag, color, tasks, done, onToggle, onGo }) {
 }
 
 const CM_CSS = `
-.cm-shell{display:flex;height:100%;width:100%;background:var(--bg-primary);color:var(--text-primary);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter','Helvetica Neue',Arial,sans-serif;letter-spacing:-0.01em;overflow:hidden;border-radius:18px;box-shadow:0 1px 2px rgba(16,40,70,0.05),0 4px 14px rgba(16,40,70,0.06);}
+.cm-shell{position:relative;display:flex;height:100%;width:100%;background:var(--bg-primary);color:var(--text-primary);font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter','Helvetica Neue',Arial,sans-serif;letter-spacing:-0.01em;overflow:hidden;border-radius:18px;box-shadow:0 1px 2px rgba(16,40,70,0.05),0 4px 14px rgba(16,40,70,0.06);}
 .cm-sidebar{width:320px;min-width:320px;background:var(--bg-surface);border-right:1px solid var(--border-color);display:flex;flex-direction:column;overflow-y:auto;padding:18px;gap:14px;}
 .cm-logo{display:flex;align-items:center;gap:11px;padding-bottom:14px;border-bottom:1px solid var(--border-color);}
 .cm-logo-m{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent-color),var(--accent-dark));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:var(--text-on-accent);box-shadow:0 3px 8px rgba(0,92,169,0.3);}
