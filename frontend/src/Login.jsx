@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import MonashLogo from './MonashLogo.jsx';
+import PasswordInput from './PasswordInput.jsx';
 import { DEPARTMENTS, DEPT } from './departments.js';
 import { useTheme } from './useTheme.js';
 
@@ -127,8 +128,8 @@ export default function Login({ onLogin }) {
                   onChange={e => setUsername(e.target.value)} autoComplete="username"
                 />
               )}
-              <input
-                className="login-input" type="password" placeholder="Password" value={password} autoFocus={role === 'admin'}
+              <PasswordInput
+                className="login-input" placeholder="Password" value={password} autoFocus={role === 'admin'}
                 onChange={e => setPassword(e.target.value)} autoComplete="current-password"
               />
               {error && <div className="login-error">{error}</div>}

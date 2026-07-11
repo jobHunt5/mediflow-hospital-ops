@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Dropdown from './Dropdown.jsx';
+import PasswordInput from './PasswordInput.jsx';
 import { PRIORITY_COLOR } from './theme.js';
 import { PIN_LOCATIONS } from './FloorMap.jsx';
 
@@ -286,7 +287,7 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
               <input value={wForm.role} onChange={e => setWForm({ ...wForm, role: e.target.value })} placeholder={`Role (e.g. ${deptConfig.workerTitle})`} />
               <input value={wForm.zone} onChange={e => setWForm({ ...wForm, zone: e.target.value })} placeholder="Zone / floor" />
               <input value={wForm.phone} onChange={e => setWForm({ ...wForm, phone: e.target.value })} placeholder="Phone (optional)" />
-              <input value={wForm.password} onChange={e => setWForm({ ...wForm, password: e.target.value })} placeholder="Login password (optional — auto-generated if blank)" />
+              <PasswordInput value={wForm.password} onChange={e => setWForm({ ...wForm, password: e.target.value })} placeholder="Login password (optional — auto-generated if blank)" />
             </div>
             <button className="adm-btn primary" type="submit">+ Add worker</button>
           </form>
