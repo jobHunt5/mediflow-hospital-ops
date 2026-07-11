@@ -841,12 +841,21 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
   // Pointer Events (not mouse events) so this works for touch and pen too,
   // not just a mouse — mouse-only handlers never fire on a phone/tablet drag.
   const onMD = e => {
+    // dragRef is a ref (updates synchronously), unlike drag/setDrag which is
+    // React state and isn't guaranteed to have re-rendered before the very
+    // next pointermove fires — on a fast touch flick, several move events can
+    // land before React ever flushes that state update, silently dropping
+    // them. Track the in-progress flag on the ref itself so onMM never races
+    // its own onMD. drag/setDrag stays around purely for the cursor style.
+    dragRef.current = { sx: e.clientX - pan.x, sy: e.clientY - pan.y, moved: false, active: true };
     setDrag(true);
-    dragRef.current = { sx: e.clientX - pan.x, sy: e.clientY - pan.y, moved: false };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
-  const onMM = e => { if (drag && dragRef.current) { dragRef.current.moved = true; setPan({ x: e.clientX - dragRef.current.sx, y: e.clientY - dragRef.current.sy }); } };
-  const onMU = () => setDrag(false);
+  const onMM = e => {
+    const d = dragRef.current;
+    if (d && d.active) { d.moved = true; setPan({ x: e.clientX - d.sx, y: e.clientY - d.sy }); }
+  };
+  const onMU = () => { if (dragRef.current) dragRef.current.active = false; setDrag(false); };
   // Fit the whole floor plan inside the visible viewport by default (desktop
   // still gets 100%, since we never scale up past 1) instead of always
   // opening at 100% zoom, which on a phone only shows a small cropped corner.
