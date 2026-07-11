@@ -172,7 +172,8 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 
 .app-subtitle { font-size: 14px; color: var(--text-secondary); margin-top: 4px; }
 
-.app-header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.app-header-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: flex-end; }
+.app-header-actions { display: flex; align-items: center; gap: 10px; }
 
 .theme-toggle {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
@@ -781,6 +782,7 @@ button.task-floor-badge:hover { background: var(--bg-elevated); border-color: va
   .app-header { gap: 10px; padding-bottom: 8px; }
   .app-title-group h1 { font-size: 19px; gap: 8px; }
   .app-subtitle { font-size: 12px; }
+  .app-header-right { width: 100%; }
   .app-nav-tabs { flex-wrap: wrap; width: 100%; }
   .app-nav-tab { flex: 1; justify-content: center; padding: 8px 10px; font-size: 12px; }
   .dept-switcher { gap: 6px; }

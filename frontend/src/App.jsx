@@ -309,6 +309,7 @@ export default function App() {
           <p className="app-subtitle">{deptConfig.name} · {ASSISTANT.site}</p>
         </div>
 
+        <div className="app-header-right">
         <div className="app-nav-tabs">
           {session.role === 'worker' && (
             <button className={`app-nav-tab ${activeTab === 'worker' ? 'active' : ''}`} onClick={() => setActiveTab('worker')}>
@@ -342,6 +343,7 @@ export default function App() {
             {session.role === 'admin' ? deptConfig.managerTitle : workerName} · {deptConfig.short}
           </span>
           <button className="logout-btn" onClick={logout}>Log out</button>
+        </div>
         </div>
       </header>
 
