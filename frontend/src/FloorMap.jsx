@@ -1113,9 +1113,9 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
           <label className="cm-chk"><input type="checkbox" checked={showPaths} onChange={() => setShowPaths(s => !s)} /> Paths</label>
           <label className="cm-chk"><input type="checkbox" checked={showLifts} onChange={() => setShowLifts(s => !s)} /> Lifts</label>
           <div className="cm-zoom">
-            <button onClick={() => setZoom(z => Math.min(4, z * 1.15))}>＋</button>
-            <button onClick={() => setZoom(z => Math.max(0.5, z / 1.15))}>－</button>
-            <button onClick={resetView}>⌂</button>
+            <button onClick={() => setZoom(z => Math.min(4, z * 1.15))} aria-label="Zoom in">＋</button>
+            <button onClick={() => setZoom(z => Math.max(0.5, z / 1.15))} aria-label="Zoom out">－</button>
+            <button onClick={resetView} aria-label="Reset view">⌂</button>
           </div>
         </div>
 

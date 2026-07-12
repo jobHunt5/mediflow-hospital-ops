@@ -3,6 +3,8 @@ import Dropdown from './Dropdown.jsx';
 import PasswordInput from './PasswordInput.jsx';
 import { PRIORITY_COLOR } from './theme.js';
 import { PIN_LOCATIONS } from './FloorMap.jsx';
+import { useToast } from './Toast.jsx';
+import { useConfirm } from './ConfirmDialog.jsx';
 
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -71,10 +73,24 @@ function OverviewTile({ label, n, of, tone = 'accent' }) {
 function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak, onResetPassword }) {
   const [editing, setEditing] = useState(false);
   const [f, setF] = useState(() => ({ ...worker, ...parseShiftRange(worker.shift, { shiftStart: '', shiftEnd: '' }) }));
+  const toast = useToast();
+  const confirmDialog = useConfirm();
   const save = () => {
     const shift = formatShiftRange(f.shiftStart, f.shiftEnd) || f.shift;
     onSave(worker.id, { name: f.name, role: f.role, zone: f.zone, shift, phone: f.phone });
     setEditing(false);
+    toast.success('Worker updated', `${f.name}'s details were saved.`);
+  };
+  const remove = async () => {
+    const ok = await confirmDialog({
+      title: `Delete ${worker.name}?`,
+      body: 'This removes their profile and login. Tasks assigned to them will be unassigned. This can\'t be undone.',
+      confirmLabel: 'Delete worker',
+      danger: true,
+    });
+    if (!ok) return;
+    onDelete(worker.id);
+    toast.success('Worker deleted', `${worker.name} was removed.`);
   };
 
   if (editing) {
@@ -116,7 +132,7 @@ function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak, onResetPasswo
         <button className="adm-btn coffee" onClick={() => onBreak(worker.id)}>☕ Break</button>
         <button className="adm-btn ghost" onClick={() => onResetPassword(worker.id)}>🔑 Reset password</button>
         <button className="adm-btn ghost" onClick={() => setEditing(true)}>Edit</button>
-        <button className="adm-btn danger" onClick={() => onDelete(worker.id)}>Delete</button>
+        <button className="adm-btn danger" onClick={remove}>Delete</button>
       </div>
     </div>
   );
@@ -125,7 +141,25 @@ function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak, onResetPasswo
 function TaskRow({ task, workers, areas, onSave, onDelete, onToggle, onDuplicate }) {
   const [editing, setEditing] = useState(false);
   const [f, setF] = useState(task);
-  const save = () => { onSave(task.id, { title: f.title, area: f.area, easyWay: f.easyWay, pinId: f.pinId || null }); setEditing(false); };
+  const toast = useToast();
+  const confirmDialog = useConfirm();
+  const save = () => {
+    onSave(task.id, { title: f.title, area: f.area, easyWay: f.easyWay, pinId: f.pinId || null });
+    setEditing(false);
+    toast.success('Task updated', `"${f.title}" was saved.`);
+  };
+  const remove = async () => {
+    const ok = await confirmDialog({
+      title: `Delete "${task.title}"?`,
+      body: 'This removes the task and its map pin, if any. This can\'t be undone.',
+      confirmLabel: 'Delete task',
+      danger: true,
+    });
+    if (!ok) return;
+    onDelete(task.id);
+    toast.success('Task deleted', `"${task.title}" was removed.`);
+  };
+  const duplicate = () => { onDuplicate(task); toast.success('Task duplicated', `A copy of "${task.title}" was created.`); };
 
   return (
     <div className={`adm-row adm-task ${task.done ? 'is-done' : ''}`}>
@@ -152,9 +186,9 @@ function TaskRow({ task, workers, areas, onSave, onDelete, onToggle, onDuplicate
         {editing
           ? (<><button className="adm-btn save" onClick={save}>Save</button><button className="adm-btn ghost" onClick={() => setEditing(false)}>Cancel</button></>)
           : (<>
-              <button className="adm-btn ghost" title="Duplicate for tomorrow night" onClick={() => onDuplicate(task)}>⧉</button>
+              <button className="adm-btn ghost" title="Duplicate for tomorrow night" aria-label="Duplicate task" onClick={duplicate}>⧉</button>
               <button className="adm-btn ghost" onClick={() => { setF(task); setEditing(true); }}>Edit</button>
-              <button className="adm-btn danger" onClick={() => onDelete(task.id)}>Delete</button>
+              <button className="adm-btn danger" onClick={remove}>Delete</button>
             </>)}
       </div>
     </div>
@@ -164,6 +198,8 @@ function TaskRow({ task, workers, areas, onSave, onDelete, onToggle, onDuplicate
 const emptyDept = { id: 'linen', name: 'Linen & Environmental Services', short: 'Linen', accent: 'var(--accent-color)', managerTitle: 'Night Manager', workerTitle: 'Worker', shiftDefault: '10:30 PM - 7:00 AM', hasBins: true };
 
 export default function AdminConsole({ workers, tasks, areas = [], leaves = [], availability = [], nightManager, api, bins = [], notifications = [], hoursLog = [], department = 'linen', deptConfig = emptyDept, closures = [], showWardRounds = false }) {
+  const toast = useToast();
+  const confirmDialog = useConfirm();
   const [tab, setTab] = useState('overview');
   const [wForm, setWForm] = useState(() => ({ name: '', role: '', zone: '', ...parseShiftRange(deptConfig.shiftDefault), phone: '', password: '' }));
   const [newCredentials, setNewCredentials] = useState(null);
@@ -187,10 +223,18 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
   const workerName = (id) => workers.find(w => w.id === id)?.name || 'Unknown';
 
   const resetWorkerPassword = async (id) => {
-    if (!confirm('Reset this worker\'s password? Their old password will stop working immediately.')) return;
+    const worker = workers.find(w => w.id === id);
+    const ok = await confirmDialog({
+      title: `Reset ${worker?.name || 'this worker'}'s password?`,
+      body: 'Their old password stops working immediately and a new one-time password is generated.',
+      confirmLabel: 'Reset password',
+      danger: true,
+    });
+    if (!ok) return;
     const res = await api.resetWorkerPassword(id);
     const data = await res?.json?.().catch(() => null);
     if (data?.credentials) setNewCredentials(data.credentials);
+    else toast.error('Could not reset password', 'Please try again.');
   };
 
   const submitWorker = async (e) => {
@@ -207,7 +251,13 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
     // exact friction this is meant to remove. Only the per-person fields reset.
     setWForm(f => ({ ...f, name: '', role: '', phone: '', password: '' }));
   };
-  const submitTask = (e) => { e.preventDefault(); if (!tForm.title.trim()) return; api.createTask({ ...tForm, assignedTo: tForm.assignedTo || null, pinId: tForm.pinId || null }); setTForm({ title: '', area: '', priority: 'normal', assignedTo: '', easyWay: '', pinId: '' }); };
+  const submitTask = (e) => {
+    e.preventDefault();
+    if (!tForm.title.trim()) return;
+    api.createTask({ ...tForm, assignedTo: tForm.assignedTo || null, pinId: tForm.pinId || null });
+    toast.success('Task created', `"${tForm.title}" was added${tForm.assignedTo ? ` and assigned to ${workerName(tForm.assignedTo)}.` : '.'}`);
+    setTForm({ title: '', area: '', priority: 'normal', assignedTo: '', easyWay: '', pinId: '' });
+  };
   const duplicateTask = (task) => api.createTask({ title: task.title, area: task.area, priority: task.priority, assignedTo: null, easyWay: task.easyWay || '', pinId: task.pinId || null });
   const submitClosure = (e) => { e.preventDefault(); if (!clForm.title.trim() || !clForm.message.trim()) return; api.createClosure({ ...clForm, department }); setClForm({ title: '', message: '' }); };
 

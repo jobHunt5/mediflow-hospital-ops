@@ -60,6 +60,35 @@ export default function Login({ onLogin }) {
         )}
         {isDark ? 'Light' : 'Dark'}
       </button>
+
+      <div className="login-visual" aria-hidden="true">
+        <div className="login-visual-blob a" />
+        <div className="login-visual-blob b" />
+        <div className="login-visual-content">
+          <MonashLogo size={34} showText={false} />
+          <h2 className="login-visual-title">Night operations, simplified.</h2>
+          <p className="login-visual-copy">
+            One place for the environmental services team to clock in, run their rounds,
+            find any room on campus and keep every ward's bins and linens on track —
+            built for Monash Medical Centre, Clayton.
+          </p>
+          <div className="login-visual-features">
+            <div className="login-visual-feature">
+              <span className="login-visual-feature-ic">📍</span>
+              <span>Live campus wayfinding across every level</span>
+            </div>
+            <div className="login-visual-feature">
+              <span className="login-visual-feature-ic">✓</span>
+              <span>Task rounds, bin sensors and alerts in real time</span>
+            </div>
+            <div className="login-visual-feature">
+              <span className="login-visual-feature-ic">🕒</span>
+              <span>Clock-in hours logged automatically</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="login-card">
         <div className="login-brand">
           <MonashLogo size={38} subtitle="Monash Health Operations" />
