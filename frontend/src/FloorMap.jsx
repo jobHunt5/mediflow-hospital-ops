@@ -539,7 +539,14 @@ function LiftIcon({ l, pulse }) {
   );
 }
 
-function FloorPlan({ floor, rooms, showLifts, showPaths, onRoomClick, hover, setHover, from, to, route, highlightLabel, pulseLiftId }) {
+// Memoized: this renders the entire SVG floor plan (every room block, road,
+// corridor line and campus shape). Without memo, dragging the map updates
+// `pan` in the parent on every single pointermove, which re-renders this
+// whole tree each frame even though none of its own props changed during a
+// pure pan — that's what caused the ghosting/smearing artifact while
+// dragging, since the browser can't keep up re-painting hundreds of SVG
+// nodes every frame.
+const FloorPlan = React.memo(function FloorPlan({ floor, rooms, showLifts, showPaths, onRoomClick, hover, setHover, from, to, route, highlightLabel, pulseLiftId }) {
   const scaleBarPx = 25 / M_PER_PX; // 25 m
   return (
     <svg width={IMG_W} height={IMG_H} viewBox={`0 0 ${IMG_W} ${IMG_H}`} className="cm-svg">
@@ -661,7 +668,7 @@ function FloorPlan({ floor, rooms, showLifts, showPaths, onRoomClick, hover, set
       </text>
     </svg>
   );
-}
+});
 
 // ══════════ MAIN ══════════
 export default function FloorMap({ department = 'linen', showRounds = true, pinnedTasks = [], workers = [], onTogglePin }) {
@@ -853,9 +860,29 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
   };
   const onMM = e => {
     const d = dragRef.current;
-    if (d && d.active) { d.moved = true; setPan({ x: e.clientX - d.sx, y: e.clientY - d.sy }); }
+    if (!d || !d.active) return;
+    d.moved = true;
+    // Browsers can fire pointermove far more often than the screen repaints
+    // (sometimes 2-3x per frame). Calling setPan for every single one queues
+    // more React renders than the display can show, and the backlog is what
+    // produced the ghosting/stacked-trail look while dragging. Coalescing to
+    // one setPan per animation frame keeps the pan in lockstep with painting.
+    d.nextPan = { x: e.clientX - d.sx, y: e.clientY - d.sy };
+    if (d.rafId) return;
+    d.rafId = requestAnimationFrame(() => {
+      d.rafId = null;
+      if (d.nextPan) setPan(d.nextPan);
+    });
   };
-  const onMU = () => { if (dragRef.current) dragRef.current.active = false; setDrag(false); };
+  const onMU = () => {
+    const d = dragRef.current;
+    if (d) {
+      if (d.rafId) { cancelAnimationFrame(d.rafId); d.rafId = null; }
+      if (d.nextPan) setPan(d.nextPan);
+      d.active = false;
+    }
+    setDrag(false);
+  };
   // Fit the whole floor plan inside the visible viewport by default (desktop
   // still gets 100%, since we never scale up past 1) instead of always
   // opening at 100% zoom, which on a phone only shows a small cropped corner.
@@ -1121,7 +1148,7 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
 
         <div ref={wrapRef} className="cm-viewport" onPointerDown={onMD} onPointerMove={onMM} onPointerUp={onMU} onPointerCancel={onMU} onPointerLeave={onMU}
           style={{ cursor: drag ? 'grabbing' : 'grab', touchAction: 'none' }}>
-          <div className="cm-stage" style={{ transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})`, width: IMG_W, height: IMG_H, transition: drag ? 'none' : 'transform 0.08s ease' }}>
+          <div className="cm-stage" style={{ transform: `translate3d(${pan.x}px,${pan.y}px,0) scale(${zoom})`, width: IMG_W, height: IMG_H, transition: drag ? 'none' : 'transform 0.08s ease' }}>
             <FloorPlan floor={activeFloor} rooms={floorRooms} showLifts={showLifts} showPaths={showPaths}
               onRoomClick={onRoomClick} hover={hover} setHover={setHover} from={from} to={to} route={floorRoute}
               highlightLabel={guideOnFloor?.destLabel || (searchHit?.floor === activeFloor ? searchHit.label : null)} pulseLiftId={guideOnFloor?.lift} />
@@ -1333,7 +1360,7 @@ const CM_CSS = `
 .cm-zoom button{width:32px;height:32px;border-radius:8px;background:var(--bg-elevated);border:1px solid var(--border-strong);color:var(--text-secondary);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;}
 .cm-zoom button:hover{background:var(--accent-soft);border-color:var(--accent-color);}
 .cm-viewport{flex:1;position:relative;overflow:hidden;background:var(--bg-primary);}
-.cm-stage{position:absolute;top:0;left:0;transform-origin:0 0;}
+.cm-stage{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform;backface-visibility:hidden;}
 .cm-svg{display:block;user-select:none;box-shadow:0 10px 44px rgba(20,50,80,0.18);border-radius:8px;}
 .cm-marker{position:absolute;transform:translate(-50%,-50%);cursor:pointer;z-index:5;}
 .cm-marker.selected{z-index:8;}
