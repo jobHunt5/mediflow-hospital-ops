@@ -1368,7 +1368,7 @@ const CM_CSS = `
 .cm-reset,.cm-route-clear{border-radius:10px;}
 .cm-zoom button{border-radius:10px;box-shadow:0 1px 2px rgba(16,40,70,0.05);}
 /* Floor tabs → Apple segmented control (matches the dashboard nav tabs) */
-.cm-floortabs{display:inline-flex;flex-wrap:wrap;gap:3px;margin:14px 14px 2px;padding:3px;background:var(--bg-segment);border:1px solid var(--border-color);border-radius:14px;}
+.cm-floortabs{display:inline-flex;align-self:flex-start;max-width:calc(100% - 28px);flex-wrap:wrap;gap:3px;margin:14px 14px 2px;padding:3px;background:var(--bg-segment);border:1px solid var(--border-color);border-radius:14px;}
 .cm-floortab{background:transparent;border:none;box-shadow:none;border-radius:11px;color:var(--text-secondary);padding:7px 15px;}
 .cm-floortab-label{font-weight:600;letter-spacing:-0.01em;}
 .cm-floortab-sub{opacity:.75;}
