@@ -21,7 +21,8 @@ export default function Dropdown({ value, onChange, options = [], placeholder = 
 
   return (
     <div className={`dd ${block ? 'block' : ''} ${open ? 'open' : ''} ${className}`} ref={ref}>
-      <button type="button" className="dd-btn" onClick={() => setOpen(o => !o)}>
+      <button type="button" className="dd-btn" onClick={() => setOpen(o => !o)} title={selected ? selected.label : undefined}
+        aria-haspopup="listbox" aria-expanded={open}>
         {selected?.dot && <span className="dd-dot" style={{ background: selected.dot }} />}
         <span className={`dd-label ${selected ? '' : 'is-placeholder'}`}>{selected ? selected.label : placeholder}</span>
         <svg className="dd-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
@@ -33,6 +34,8 @@ export default function Dropdown({ value, onChange, options = [], placeholder = 
               type="button"
               key={o.value}
               className={`dd-item ${o.value === value ? 'sel' : ''}`}
+              role="option"
+              aria-selected={o.value === value}
               onClick={() => { onChange(o.value); setOpen(false); }}
             >
               {o.dot && <span className="dd-dot" style={{ background: o.dot }} />}

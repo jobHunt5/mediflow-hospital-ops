@@ -151,6 +151,14 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
   gap: 24px;
 }
 
+/* ── Post-login data load (avoids a flash of empty/zero state, and covers
+   Render free-tier cold starts which can take several seconds) ── */
+.app-loading { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--bg-primary); }
+.app-loading-mark { opacity: 0.9; }
+.app-loading-spinner { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--border-color); border-top-color: var(--accent-color); animation: appLoadingSpin 0.7s linear infinite; }
+@keyframes appLoadingSpin { to { transform: rotate(360deg); } }
+.app-loading-text { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+
 .app-header {
   display: flex;
   justify-content: space-between;
@@ -227,14 +235,32 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
    LOGIN — role → department → (worker) picker
    ══════════════════════════════════════════════════════════════════════ */
 .login-page {
-  min-height: 100dvh; display: flex; align-items: center; justify-content: center;
-  padding: 24px; background: var(--bg-primary); position: relative;
+  min-height: 100dvh; display: grid; grid-template-columns: minmax(380px, 42%) 1fr;
+  background: var(--bg-primary); position: relative;
 }
-.login-theme-toggle { position: absolute; top: 20px; right: 20px; }
+.login-theme-toggle { position: absolute; top: 20px; right: 20px; z-index: 5; }
+
+/* ── Left branding panel (desktop only) ── */
+.login-visual {
+  position: relative; overflow: hidden; display: flex; align-items: center; padding: 56px;
+  background: linear-gradient(155deg, var(--accent-dark) 0%, var(--accent-color) 62%, var(--accent-mid) 130%);
+}
+.login-visual-blob { position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0.35; background: #fff; animation: loginBlobFloat 16s ease-in-out infinite; }
+.login-visual-blob.a { width: 420px; height: 420px; top: -140px; left: -120px; animation-delay: 0s; }
+.login-visual-blob.b { width: 320px; height: 320px; bottom: -100px; right: -80px; background: var(--accent-mid); opacity: 0.3; animation-delay: -8s; }
+@keyframes loginBlobFloat { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(24px, -18px) scale(1.06); } }
+.login-visual-content { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 18px; max-width: 420px; }
+.login-visual-title { font-size: 30px; font-weight: 800; color: #fff; line-height: 1.2; margin: 6px 0 0; letter-spacing: -0.01em; }
+.login-visual-copy { font-size: 14.5px; color: rgba(255,255,255,0.82); line-height: 1.6; margin: 0; }
+.login-visual-features { display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+.login-visual-feature { display: flex; align-items: center; gap: 12px; font-size: 13.5px; font-weight: 600; color: rgba(255,255,255,0.92); }
+.login-visual-feature-ic { flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center; font-size: 14px; }
+@media (max-width: 959px) { .login-visual { display: none; } .login-page { display: flex; align-items: center; justify-content: center; padding: 24px; } }
+
 .login-card {
-  width: 100%; max-width: 480px; background: var(--bg-surface); border: 1px solid var(--border-color);
+  width: 100%; max-width: 480px; margin: 24px; background: var(--bg-surface); border: 1px solid var(--border-color);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 28px; position: relative;
-  display: flex; flex-direction: column; gap: 4px;
+  display: flex; flex-direction: column; gap: 4px; align-self: center; justify-self: center;
 }
 .login-brand { margin-bottom: 10px; }
 .login-title { font-size: 21px; font-weight: 700; color: var(--text-primary); margin-top: 6px; }
@@ -587,6 +613,27 @@ button.task-floor-badge:hover { background: var(--bg-elevated); border-color: va
 .push-btn.accept { background: var(--color-error); color: var(--text-on-accent); border-color: var(--color-error); }
 .push-btn.resolve { background: var(--color-success); color: var(--text-on-accent); border-color: var(--color-success); }
 .push-btn:active { transform: scale(0.97); }
+
+/* ── Action-feedback toast stack (save/create/delete confirmations) ── */
+.toast-stack { position: fixed; top: 84px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 10px; width: 340px; max-width: calc(100vw - 32px); pointer-events: none; }
+.toast-item { pointer-events: auto; position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 13px 36px 13px 14px; background: var(--bg-surface); border: 1px solid var(--border-color); border-left: 4px solid var(--color-success); border-radius: 12px; box-shadow: var(--shadow-lg); animation: toastIn 0.24s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.toast-item.kind-error { border-left-color: var(--color-error); }
+.toast-item.kind-info { border-left-color: var(--accent-color); }
+.toast-icon-badge { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; background: var(--color-success-soft); color: var(--color-success-ink); }
+.toast-item.kind-error .toast-icon-badge { background: var(--color-error-soft); color: var(--color-error-ink); }
+.toast-item.kind-info .toast-icon-badge { background: var(--accent-soft); color: var(--accent-color); }
+.toast-close { position: absolute; top: 9px; right: 9px; width: 22px; height: 22px; border: none; background: none; color: var(--text-muted); font-size: 17px; line-height: 1; cursor: pointer; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+.toast-close:hover { background: var(--bg-elevated); color: var(--text-primary); }
+@media (max-width: 640px) { .toast-stack { left: 10px; right: 10px; top: auto; bottom: 10px; width: auto; max-width: none; } }
+
+/* ── Confirmation dialog (replaces native confirm()) ── */
+.confirm-scrim { position: fixed; inset: 0; background: rgba(8, 16, 26, 0.5); backdrop-filter: blur(2px); z-index: 300; display: flex; align-items: center; justify-content: center; padding: 20px; animation: confirmScrimIn 0.15s ease; }
+@keyframes confirmScrimIn { from { opacity: 0; } to { opacity: 1; } }
+.confirm-box { width: 100%; max-width: 400px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 22px 24px 20px; animation: confirmBoxIn 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes confirmBoxIn { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+.confirm-title { font-size: 16.5px; font-weight: 800; color: var(--text-primary); margin: 0 0 8px; }
+.confirm-body { font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 20px; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
 /* ══════════════════════════════════════════════════════════════════════
    ADMIN CONSOLE

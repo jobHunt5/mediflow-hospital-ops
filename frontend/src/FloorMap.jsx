@@ -1140,9 +1140,9 @@ export default function FloorMap({ department = 'linen', showRounds = true, pinn
           <label className="cm-chk"><input type="checkbox" checked={showPaths} onChange={() => setShowPaths(s => !s)} /> Paths</label>
           <label className="cm-chk"><input type="checkbox" checked={showLifts} onChange={() => setShowLifts(s => !s)} /> Lifts</label>
           <div className="cm-zoom">
-            <button onClick={() => setZoom(z => Math.min(4, z * 1.15))}>＋</button>
-            <button onClick={() => setZoom(z => Math.max(0.5, z / 1.15))}>－</button>
-            <button onClick={resetView}>⌂</button>
+            <button onClick={() => setZoom(z => Math.min(4, z * 1.15))} aria-label="Zoom in">＋</button>
+            <button onClick={() => setZoom(z => Math.max(0.5, z / 1.15))} aria-label="Zoom out">－</button>
+            <button onClick={resetView} aria-label="Reset view">⌂</button>
           </div>
         </div>
 
@@ -1394,9 +1394,14 @@ const CM_CSS = `
 .cm-guide-btn:hover{transform:none;background:var(--accent-soft);border-color:var(--accent-color);box-shadow:0 2px 8px rgba(16,40,70,0.06);}
 .cm-reset,.cm-route-clear{border-radius:10px;}
 .cm-zoom button{border-radius:10px;box-shadow:0 1px 2px rgba(16,40,70,0.05);}
-/* Floor tabs → Apple segmented control (matches the dashboard nav tabs) */
-.cm-floortabs{display:inline-flex;flex-wrap:wrap;gap:3px;margin:14px 14px 2px;padding:3px;background:var(--bg-segment);border:1px solid var(--border-color);border-radius:14px;}
-.cm-floortab{background:transparent;border:none;box-shadow:none;border-radius:11px;color:var(--text-secondary);padding:7px 15px;}
+/* Floor tabs → Apple segmented control (matches the dashboard nav tabs).
+   Single row, no wrap: wrapping left a ragged dead-space gap on whichever
+   row didn't fully fill the pill's width, and shrink-wrapping the pill to
+   its content instead left a mismatched gap against the full-width toolbar
+   below it. A horizontally-scrolling single row has neither failure mode. */
+.cm-floortabs{display:inline-flex;align-self:flex-start;max-width:100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;gap:3px;margin:14px 14px 2px;padding:3px;background:var(--bg-segment);border:1px solid var(--border-color);border-radius:14px;}
+.cm-floortabs::-webkit-scrollbar{display:none;}
+.cm-floortab{flex-shrink:0;background:transparent;border:none;box-shadow:none;border-radius:11px;color:var(--text-secondary);padding:7px 15px;}
 .cm-floortab-label{font-weight:600;letter-spacing:-0.01em;}
 .cm-floortab-sub{opacity:.75;}
 .cm-floortab:hover{background:var(--bg-elevated);color:var(--text-primary);}

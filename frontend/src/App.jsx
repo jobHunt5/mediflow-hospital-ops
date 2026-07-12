@@ -79,6 +79,7 @@ export default function App() {
   const [nightManagers, setNightManagers] = useState({});
   const [closures, setClosures] = useState([]);
   const [deptSettings, setDeptSettings] = useState({});
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [selectedWorkerId, setSelectedWorkerId] = useState(session?.workerId || null);
   const [leaveForm, setLeaveForm] = useState({ type: 'Annual', startDate: '', endDate: '', reason: '' });
   const [availForm, setAvailForm] = useState({ date: '', from: '', to: '', note: '' });
@@ -102,6 +103,7 @@ export default function App() {
     try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
     setBins([]); setNotifications([]); setWorkers([]); setTasks([]); setLeaves([]);
     setAvailability([]); setHoursLog([]); setNightManagers({}); setClosures([]); setDeptSettings({});
+    setDataLoaded(false);
   };
 
   // Authenticated fetch helper — attaches the session's bearer token and
@@ -134,7 +136,7 @@ export default function App() {
         setAvailability(d.availability || []); setHoursLog(d.hoursLog || []);
         setNightManagers(d.nightManagers || {}); setClosures(d.closures || []);
         setDeptSettings(d.deptSettings || {});
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => setDataLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
 
@@ -297,6 +299,16 @@ export default function App() {
 
   if (!session) {
     return <Login onLogin={login} />;
+  }
+
+  if (!dataLoaded) {
+    return (
+      <div className="app-loading">
+        <span className="app-loading-mark"><MonashMark size={40} /></span>
+        <div className="app-loading-spinner" aria-hidden="true" />
+        <span className="app-loading-text">Loading MediFlow…</span>
+      </div>
+    );
   }
 
   return (
@@ -497,7 +509,7 @@ export default function App() {
                         <div className="req-title">{l.type} leave</div>
                         <div className="req-sub">{l.startDate} → {l.endDate}{l.reason ? ` · ${l.reason}` : ''}</div>
                       </div>
-                      {l.status === 'pending' && <button className="req-x" onClick={() => api.deleteLeave(l.id)}>✕</button>}
+                      {l.status === 'pending' && <button className="req-x" aria-label="Cancel leave request" onClick={() => api.deleteLeave(l.id)}>✕</button>}
                     </div>
                   ))}
                 </div>
@@ -530,7 +542,7 @@ export default function App() {
                         <div className="req-title">{a.date}</div>
                         <div className="req-sub">{a.from || '—'}{a.to ? ` – ${a.to}` : ''}{a.note ? ` · ${a.note}` : ''}</div>
                       </div>
-                      <button className="req-x" onClick={() => api.deleteAvailability(a.id)}>✕</button>
+                      <button className="req-x" aria-label="Remove availability" onClick={() => api.deleteAvailability(a.id)}>✕</button>
                     </div>
                   ))}
                 </div>
