@@ -13,6 +13,31 @@ const PIN_OPTIONS = [{ value: '', label: 'No map pin' }, ...PIN_LOCATIONS.map(l 
 const pinLabel = (id) => (id && PIN_BY_ID[id] ? `${PIN_BY_ID[id].name} — Level ${PIN_BY_ID[id].floor}` : null);
 const fmtH = (h) => (Number.isInteger(h) ? `${h}` : h.toFixed(1));
 const initialsOf = (name) => name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+// Shift is stored as a plain display string ("10:30 PM - 7:00 AM"), but
+// admins edit it as two real <input type="time"> pickers rather than free
+// text -- these convert between the two.
+function parseShiftRange(shiftStr, fallback = { shiftStart: '22:30', shiftEnd: '07:00' }) {
+  const m = (shiftStr || '').match(/(\d{1,2}):(\d{2})\s*(AM|PM)\s*-\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!m) return fallback;
+  const to24 = (h, mm, ap) => {
+    h = parseInt(h, 10); mm = parseInt(mm, 10);
+    if (/pm/i.test(ap) && h !== 12) h += 12;
+    if (/am/i.test(ap) && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  };
+  return { shiftStart: to24(m[1], m[2], m[3]), shiftEnd: to24(m[4], m[5], m[6]) };
+}
+function formatShiftRange(start, end) {
+  const to12 = (hhmm) => {
+    if (!hhmm) return '';
+    let [h, m] = hhmm.split(':').map(Number);
+    const ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${String(m).padStart(2, '0')} ${ap}`;
+  };
+  return start && end ? `${to12(start)} - ${to12(end)}` : '';
+}
 const TONE_VAR = { accent: 'var(--accent-color)', success: 'var(--color-success-ink)', warn: 'var(--color-warning-ink)', danger: 'var(--color-error-ink)' };
 
 const AdmIcon = ({ name }) => {
@@ -43,10 +68,14 @@ function OverviewTile({ label, n, of, tone = 'accent' }) {
   );
 }
 
-function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak }) {
+function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak, onResetPassword }) {
   const [editing, setEditing] = useState(false);
-  const [f, setF] = useState(worker);
-  const save = () => { onSave(worker.id, { name: f.name, role: f.role, zone: f.zone, shift: f.shift, phone: f.phone }); setEditing(false); };
+  const [f, setF] = useState(() => ({ ...worker, ...parseShiftRange(worker.shift, { shiftStart: '', shiftEnd: '' }) }));
+  const save = () => {
+    const shift = formatShiftRange(f.shiftStart, f.shiftEnd) || f.shift;
+    onSave(worker.id, { name: f.name, role: f.role, zone: f.zone, shift, phone: f.phone });
+    setEditing(false);
+  };
 
   if (editing) {
     return (
@@ -55,8 +84,15 @@ function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak }) {
           <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Name" />
           <input value={f.role} onChange={e => setF({ ...f, role: e.target.value })} placeholder="Role" />
           <input value={f.zone} onChange={e => setF({ ...f, zone: e.target.value })} placeholder="Zone / floor" />
-          <input value={f.shift} onChange={e => setF({ ...f, shift: e.target.value })} placeholder="Shift" />
           <input value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} placeholder="Phone" />
+          <label className="adm-shift-field">
+            <span className="adm-shift-label">Shift start</span>
+            <input type="time" value={f.shiftStart || ''} onChange={e => setF({ ...f, shiftStart: e.target.value })} />
+          </label>
+          <label className="adm-shift-field">
+            <span className="adm-shift-label">Shift end</span>
+            <input type="time" value={f.shiftEnd || ''} onChange={e => setF({ ...f, shiftEnd: e.target.value })} />
+          </label>
         </div>
         <div className="adm-row-actions">
           <button className="adm-btn save" onClick={save}>Save</button>
@@ -78,6 +114,7 @@ function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak }) {
       </div>
       <div className="adm-row-actions">
         <button className="adm-btn coffee" onClick={() => onBreak(worker.id)}>☕ Break</button>
+        <button className="adm-btn ghost" onClick={() => onResetPassword(worker.id)}>🔑 Reset password</button>
         <button className="adm-btn ghost" onClick={() => setEditing(true)}>Edit</button>
         <button className="adm-btn danger" onClick={() => onDelete(worker.id)}>Delete</button>
       </div>
@@ -128,7 +165,7 @@ const emptyDept = { id: 'linen', name: 'Linen & Environmental Services', short: 
 
 export default function AdminConsole({ workers, tasks, areas = [], leaves = [], availability = [], nightManager, api, bins = [], notifications = [], hoursLog = [], department = 'linen', deptConfig = emptyDept, closures = [], showWardRounds = false }) {
   const [tab, setTab] = useState('overview');
-  const [wForm, setWForm] = useState({ name: '', role: '', zone: '', shift: deptConfig.shiftDefault, phone: '', password: '' });
+  const [wForm, setWForm] = useState(() => ({ name: '', role: '', zone: '', ...parseShiftRange(deptConfig.shiftDefault), phone: '', password: '' }));
   const [newCredentials, setNewCredentials] = useState(null);
   const [tForm, setTForm] = useState({ title: '', area: '', priority: 'normal', assignedTo: '', easyWay: '', pinId: '' });
   const [nm, setNm] = useState(nightManager || { name: '', role: '', phone: '', location: '' });
@@ -137,7 +174,7 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
   const [tSearch, setTSearch] = useState('');
   const [clForm, setClForm] = useState({ title: '', message: '' });
 
-  React.useEffect(() => { setWForm(f => ({ ...f, shift: deptConfig.shiftDefault })); setTab('overview'); }, [department]);
+  React.useEffect(() => { setWForm(f => ({ ...f, ...parseShiftRange(deptConfig.shiftDefault) })); setTab('overview'); }, [department]);
 
   React.useEffect(() => { if (nightManager) setNm(nightManager); }, [nightManager]);
 
@@ -149,13 +186,26 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
 
   const workerName = (id) => workers.find(w => w.id === id)?.name || 'Unknown';
 
+  const resetWorkerPassword = async (id) => {
+    if (!confirm('Reset this worker\'s password? Their old password will stop working immediately.')) return;
+    const res = await api.resetWorkerPassword(id);
+    const data = await res?.json?.().catch(() => null);
+    if (data?.credentials) setNewCredentials(data.credentials);
+  };
+
   const submitWorker = async (e) => {
     e.preventDefault();
     if (!wForm.name.trim()) return;
-    const res = await api.createWorker(wForm);
+    const shift = formatShiftRange(wForm.shiftStart, wForm.shiftEnd) || deptConfig.shiftDefault;
+    const payload = { name: wForm.name, role: wForm.role, zone: wForm.zone, shift, phone: wForm.phone };
+    if (wForm.password.trim()) payload.password = wForm.password.trim();
+    const res = await api.createWorker(payload);
     const data = await res?.json?.().catch(() => null);
     if (data?.credentials) setNewCredentials(data.credentials);
-    setWForm({ name: '', role: '', zone: '', shift: deptConfig.shiftDefault, phone: '', password: '' });
+    // Zone and shift stay put -- when adding several workers for the same
+    // shift in a row, re-typing the same start/end time every time is the
+    // exact friction this is meant to remove. Only the per-person fields reset.
+    setWForm(f => ({ ...f, name: '', role: '', phone: '', password: '' }));
   };
   const submitTask = (e) => { e.preventDefault(); if (!tForm.title.trim()) return; api.createTask({ ...tForm, assignedTo: tForm.assignedTo || null, pinId: tForm.pinId || null }); setTForm({ title: '', area: '', priority: 'normal', assignedTo: '', easyWay: '', pinId: '' }); };
   const duplicateTask = (task) => api.createTask({ title: task.title, area: task.area, priority: task.priority, assignedTo: null, easyWay: task.easyWay || '', pinId: task.pinId || null });
@@ -288,6 +338,14 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
               <input value={wForm.zone} onChange={e => setWForm({ ...wForm, zone: e.target.value })} placeholder="Zone / floor" />
               <input value={wForm.phone} onChange={e => setWForm({ ...wForm, phone: e.target.value })} placeholder="Phone (optional)" />
               <PasswordInput value={wForm.password} onChange={e => setWForm({ ...wForm, password: e.target.value })} placeholder="Login password (optional — auto-generated if blank)" />
+              <label className="adm-shift-field">
+                <span className="adm-shift-label">Shift start</span>
+                <input type="time" value={wForm.shiftStart || ''} onChange={e => setWForm({ ...wForm, shiftStart: e.target.value })} />
+              </label>
+              <label className="adm-shift-field">
+                <span className="adm-shift-label">Shift end</span>
+                <input type="time" value={wForm.shiftEnd || ''} onChange={e => setWForm({ ...wForm, shiftEnd: e.target.value })} />
+              </label>
             </div>
             <button className="adm-btn primary" type="submit">+ Add worker</button>
           </form>
@@ -308,7 +366,7 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
             {workers.length > 0 && filteredWorkers.length === 0 && <div className="adm-empty">No workers match “{wSearch}”.</div>}
             {filteredWorkers.map(w => (
               <WorkerRow key={w.id} worker={w} taskCount={tasks.filter(t => t.assignedTo === w.id).length}
-                onSave={api.updateWorker} onDelete={api.deleteWorker} onBreak={api.sendBreak} />
+                onSave={api.updateWorker} onDelete={api.deleteWorker} onBreak={api.sendBreak} onResetPassword={resetWorkerPassword} />
             ))}
           </div>
         </div>

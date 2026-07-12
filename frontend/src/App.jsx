@@ -189,6 +189,7 @@ export default function App() {
     createWorker: (b) => jsonReq('/api/workers', 'POST', b),
     updateWorker: (id, b) => jsonReq(`/api/workers/${id}`, 'PATCH', b),
     deleteWorker: (id) => jsonReq(`/api/workers/${id}`, 'DELETE'),
+    resetWorkerPassword: (id, password) => jsonReq(`/api/workers/${id}/reset-password`, 'POST', password ? { password } : {}),
     createTask: (b) => jsonReq('/api/tasks', 'POST', b),
     updateTask: (id, b) => jsonReq(`/api/tasks/${id}`, 'PATCH', b),
     deleteTask: (id) => jsonReq(`/api/tasks/${id}`, 'DELETE'),

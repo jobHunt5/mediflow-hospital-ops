@@ -177,6 +177,19 @@ app.delete('/api/workers/:id', authRequired, adminOnly, ah(async (req, res) => {
   res.json({ success: true });
 }));
 
+app.post('/api/workers/:id/reset-password', authRequired, adminOnly, ah(async (req, res) => {
+  const existing = await prisma.worker.findUnique({ where: { id: req.params.id }, include: { account: true } });
+  if (!existing) return res.status(404).json({ error: 'Worker not found' });
+  if (existing.department !== req.auth.department) return res.status(403).json({ error: 'Not your department' });
+  if (!existing.account) return res.status(404).json({ error: 'This worker has no login account to reset' });
+  const { password } = req.body || {};
+  if (password && password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  const newPassword = password || genPassword();
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await prisma.account.update({ where: { id: existing.account.id }, data: { passwordHash } });
+  res.json({ success: true, credentials: { username: existing.account.username, password: newPassword } });
+}));
+
 app.post('/api/workers/:id/clock', authRequired, validate(clockSchema), ah(async (req, res) => {
   if (req.auth.role !== 'worker' || req.auth.workerId !== req.params.id) {
     return res.status(403).json({ error: 'You can only clock yourself in or out' });

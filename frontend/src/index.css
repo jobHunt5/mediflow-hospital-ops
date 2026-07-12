@@ -639,6 +639,9 @@ button.task-floor-badge:hover { background: var(--bg-elevated); border-color: va
 
 .adm-form { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--bg-elevated); border: 1px solid var(--border-color); border-radius: 14px; }
 .adm-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.adm-shift-field { display: flex; flex-direction: column; gap: 3px; }
+.adm-shift-label { font-size: 10.5px; font-weight: 600; color: var(--text-muted); padding-left: 1px; }
+.adm-shift-field input[type="time"] { width: 100%; }
 
 .adm-btn { font-size: 13px; font-weight: 700; border-radius: 10px; padding: 8px 14px; cursor: pointer; border: 1px solid transparent; transition: filter .15s, transform .1s; font-family: inherit; }
 .adm-btn:active { transform: scale(0.97); }
