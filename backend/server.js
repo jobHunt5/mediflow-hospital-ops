@@ -559,4 +559,10 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => console.log(`Backend server is running on http://localhost:${PORT}`));
+// The test suite imports `app` directly and drives it with supertest —
+// it must not also bind a real port.
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => console.log(`Backend server is running on http://localhost:${PORT}`));
+}
+
+export default app;
