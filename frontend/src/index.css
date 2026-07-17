@@ -350,6 +350,14 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .closure-banner-icon { font-size: 16px; flex-shrink: 0; }
 .closure-banner-text { display: flex; flex-direction: column; gap: 4px; }
 
+/* ── Self-schedule request window banner ── */
+.schedule-window-banner {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px;
+  background: var(--accent-soft); border: 1px solid var(--border-color);
+  border-radius: 12px; color: var(--text-primary); font-size: 12.5px; line-height: 1.45; margin-bottom: 12px;
+}
+.schedule-window-banner b { color: var(--accent-color); }
+
 /* ── New-worker credentials banner (admin console) ── */
 .adm-credentials-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px;
@@ -498,11 +506,22 @@ input[type="date"] { color-scheme: light; }
 /* ── Round / task cards (shared by Worker "Shift" and Admin) ── */
 .rounds-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
 .rounds-head { display: flex; align-items: center; gap: 9px; }
+
+/* ── For You Today digest ── */
+.digest-card { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.digest-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.digest-list { display: flex; flex-direction: column; gap: 6px; }
+.digest-item { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-primary); }
+.digest-icon { flex-shrink: 0; font-size: 15px; }
 .rounds-dot { width: 12px; height: 12px; border-radius: 4px; flex-shrink: 0; }
 .rounds-title { font-size: 14.5px; font-weight: 700; color: var(--text-primary); }
 .rounds-tag { font-size: 11.5px; color: var(--text-muted); font-style: italic; }
 .rounds-count { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .rounds-count.complete { color: var(--color-success-ink); }
+.rounds-head-toggle { width: 100%; background: transparent; border: none; padding: 0; font-family: inherit; text-align: left; cursor: pointer; }
+.rounds-head-toggle .rounds-count { margin-left: 0; }
+.rounds-chevron { flex-shrink: 0; color: var(--text-muted); transition: transform .15s; }
+.rounds-chevron.open { transform: rotate(180deg); }
 .rounds-list { display: flex; flex-direction: column; gap: 5px; }
 
 .task-block { display: flex; flex-direction: column; }
@@ -537,6 +556,17 @@ button.task-floor-badge:hover { background: var(--bg-elevated); border-color: va
 .easyway-toggle { border: none; background: transparent; color: var(--color-warning-ink); font-size: 11.5px; font-weight: 600; cursor: pointer; padding: 4px 6px; }
 .easyway-toggle:hover { text-decoration: underline; }
 .easyway-body { font-size: 12.5px; color: var(--text-secondary); line-height: 1.45; background: var(--color-warning-soft); border: 1px solid var(--color-warning-border); border-radius: 10px; padding: 9px 11px; margin: 2px 4px 4px; }
+
+.task-flag-icon {
+  font-size: 12px; line-height: 1; flex-shrink: 0; cursor: pointer; font-family: inherit;
+  background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px;
+  padding: 3px 6px; opacity: 0.55; filter: grayscale(1); transition: opacity .15s, filter .15s, background .15s;
+}
+.task-flag-icon:hover { opacity: 1; filter: grayscale(0); background: var(--color-error-soft); border-color: var(--color-error-border); }
+.task-flag-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--color-error-ink); background: var(--color-error-soft); border: 1px solid var(--color-error-border); border-radius: 10px; padding: 8px 11px; margin: 2px 4px 4px; }
+.task-flag-clear { border: none; background: transparent; color: inherit; font-weight: 700; font-size: 11.5px; cursor: pointer; text-decoration: underline; flex-shrink: 0; }
+.task-flag-form { display: flex; gap: 6px; align-items: center; margin: 2px 4px 4px; }
+.task-flag-form input { flex: 1; }
 
 /* ── Live bin sensors ── */
 .sensors-card { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
@@ -692,6 +722,7 @@ button.task-floor-badge:hover { background: var(--bg-elevated); border-color: va
 
 .adm-btn { font-size: 13px; font-weight: 700; border-radius: 10px; padding: 8px 14px; cursor: pointer; border: 1px solid transparent; transition: filter .15s, transform .1s; font-family: inherit; }
 .adm-btn:active { transform: scale(0.97); }
+.adm-btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none !important; transform: none !important; }
 .adm-btn.primary { background: var(--accent-color); color: var(--text-on-accent); align-self: flex-start; }
 .adm-btn.primary:hover { filter: brightness(1.08); }
 .adm-btn.save { background: var(--color-success); color: var(--text-on-accent); }
@@ -733,6 +764,7 @@ button.task-floor-badge:hover { background: var(--bg-elevated); border-color: va
 .adm-overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
 .adm-alert-icon { font-size: 18px; flex-shrink: 0; width: 32px; text-align: center; }
 .adm-live-badge { margin-left: 8px; font-size: 10.5px; font-weight: 700; color: var(--color-success-ink); background: var(--color-success-soft); border: 1px solid var(--color-success-border); border-radius: 20px; padding: 1px 8px; vertical-align: middle; }
+.adm-live-badge.stuck { color: var(--color-error-ink); background: var(--color-error-soft); border-color: var(--color-error-border); }
 
 /* ── Bins tab ── */
 .adm-bins-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
@@ -775,6 +807,12 @@ button.task-floor-badge:hover { background: var(--bg-elevated); border-color: va
 .hero-stat-l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.72; }
 
 .hours-empty { font-size: 12.5px; color: var(--text-muted); text-align: center; padding: 6px 0 2px; }
+
+/* ── Leave accrual balance ── */
+.leave-balance-row { display: flex; gap: 10px; margin-bottom: 4px; }
+.leave-balance-stat { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; background: var(--bg-elevated); border: 1px solid var(--border-color); border-radius: 12px; }
+.leave-balance-n { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.leave-balance-l { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 700; }
 
 /* ── Hours calendar ── */
 .cal { display: flex; flex-direction: column; gap: 9px; }

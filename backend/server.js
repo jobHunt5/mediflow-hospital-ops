@@ -13,6 +13,7 @@ import {
   taskCreateSchema, taskUpdateSchema, leaveCreateSchema, leaveUpdateSchema,
   availabilityCreateSchema, nightManagerSchema, deptSettingSchema,
   closureCreateSchema, closureUpdateSchema, binFillSchema, clockSchema,
+  openShiftCreateSchema, taskBlockSchema,
 } from './src/schemas.js';
 
 const app = express();
@@ -54,6 +55,13 @@ const BREAK_MESSAGES = [
 ];
 
 const getStatusFromLevel = (level) => (level >= 100 ? 'full' : level >= 75 ? 'medium' : 'empty');
+// Leave dates are plain YYYY-MM-DD strings; a shift is treated as 8 hours (matches
+// the 480-minute shift ring the frontend already assumes for every department).
+const HOURS_PER_LEAVE_DAY = 8;
+const leaveDaysInclusive = (startDate, endDate) => {
+  const ms = new Date(`${endDate}T00:00:00Z`) - new Date(`${startDate}T00:00:00Z`);
+  return Math.max(1, Math.round(ms / 86400000) + 1);
+};
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 const genPassword = () => Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
 
@@ -91,6 +99,9 @@ const pushHours = async () => broadcast('HOURS_SET', await prisma.hoursLog.findM
 const pushNightManagers = async () => broadcast('NIGHT_MANAGERS_SET', keyByDept(await prisma.nightManager.findMany()));
 const pushClosures = async () => broadcast('CLOSURES_SET', await prisma.closure.findMany({ orderBy: { createdAt: 'desc' } }));
 const pushDeptSettings = async () => broadcast('DEPT_SETTINGS_SET', keyByDept(await prisma.deptSetting.findMany()));
+const serializeOpenShift = ({ ownerId, claimedById, ...rest }) => ({ ...rest, owner: ownerId, claimedBy: claimedById });
+const findOpenShifts = async (where) => (await prisma.openShift.findMany({ where, orderBy: { createdAt: 'desc' } })).map(serializeOpenShift);
+const pushOpenShifts = async () => broadcast('OPEN_SHIFTS_SET', await findOpenShifts());
 
 // ══════════════════════════════ Auth ══════════════════════════════
 app.post('/api/auth/login', validate(loginSchema), ah(async (req, res) => {
@@ -125,7 +136,7 @@ app.patch('/api/auth/password', authRequired, ah(async (req, res) => {
 
 // ══════════════════════════════ State snapshot ══════════════════════════════
 app.get('/api/state', authRequired, ah(async (_req, res) => {
-  const [bins, workers, tasks, notifications, leaves, availability, hoursLog, nightManagerRows, closures, deptSettingRows] = await Promise.all([
+  const [bins, workers, tasks, notifications, leaves, availability, hoursLog, nightManagerRows, closures, deptSettingRows, openShifts] = await Promise.all([
     prisma.bin.findMany(),
     prisma.worker.findMany({ orderBy: { createdAt: 'asc' } }),
     findTasks(),
@@ -136,10 +147,11 @@ app.get('/api/state', authRequired, ah(async (_req, res) => {
     prisma.nightManager.findMany(),
     prisma.closure.findMany({ orderBy: { createdAt: 'desc' } }),
     prisma.deptSetting.findMany(),
+    findOpenShifts(),
   ]);
   res.json({
     bins, workers, tasks, notifications, areas: AREAS, leaves, availability, hoursLog,
-    nightManagers: keyByDept(nightManagerRows), closures, deptSettings: keyByDept(deptSettingRows),
+    nightManagers: keyByDept(nightManagerRows), closures, deptSettings: keyByDept(deptSettingRows), openShifts,
   });
 }));
 
@@ -190,6 +202,21 @@ app.post('/api/workers/:id/reset-password', authRequired, adminOnly, ah(async (r
   res.json({ success: true, credentials: { username: existing.account.username, password: newPassword } });
 }));
 
+// Shared by a worker clocking themself out and an admin force-clocking a
+// stuck worker out.
+async function closeOutClockSession(worker, now) {
+  const hrs = Math.round(((now - worker.clockedInAt) / 3600000) * 10) / 10;
+  const date = now.toISOString().slice(0, 10);
+  const existingEntry = await prisma.hoursLog.findUnique({ where: { workerId_date: { workerId: worker.id, date } } });
+  if (existingEntry) {
+    await prisma.hoursLog.update({ where: { id: existingEntry.id }, data: { hours: Math.round((existingEntry.hours + hrs) * 10) / 10 } });
+  } else {
+    await prisma.hoursLog.create({ data: { workerId: worker.id, date, hours: hrs } });
+  }
+  await prisma.worker.update({ where: { id: worker.id }, data: { clockedInAt: null, status: 'idle' } });
+  await pushHours();
+}
+
 app.post('/api/workers/:id/clock', authRequired, validate(clockSchema), ah(async (req, res) => {
   if (req.auth.role !== 'worker' || req.auth.workerId !== req.params.id) {
     return res.status(403).json({ error: 'You can only clock yourself in or out' });
@@ -199,19 +226,23 @@ app.post('/api/workers/:id/clock', authRequired, validate(clockSchema), ah(async
   const { action } = req.body;
   const now = new Date();
   if (action === 'in') {
+    // A worker who forgot to clock out still has clockedInAt set — clocking
+    // in again would silently overwrite it and lose that shift's hours.
+    if (worker.clockedInAt) return res.status(400).json({ error: 'You are still clocked in from a previous shift — ask your manager to fix it before clocking in again' });
     await prisma.worker.update({ where: { id: worker.id }, data: { clockedInAt: now, status: 'on shift' } });
   } else if (worker.clockedInAt) {
-    const hrs = Math.round(((now - worker.clockedInAt) / 3600000) * 10) / 10;
-    const date = now.toISOString().slice(0, 10);
-    const existingEntry = await prisma.hoursLog.findUnique({ where: { workerId_date: { workerId: worker.id, date } } });
-    if (existingEntry) {
-      await prisma.hoursLog.update({ where: { id: existingEntry.id }, data: { hours: Math.round((existingEntry.hours + hrs) * 10) / 10 } });
-    } else {
-      await prisma.hoursLog.create({ data: { workerId: worker.id, date, hours: hrs } });
-    }
-    await prisma.worker.update({ where: { id: worker.id }, data: { clockedInAt: null, status: 'idle' } });
-    await pushHours();
+    await closeOutClockSession(worker, now);
   }
+  await pushWorkers();
+  res.json({ success: true, worker: await prisma.worker.findUnique({ where: { id: worker.id } }) });
+}));
+
+app.post('/api/workers/:id/force-clock-out', authRequired, adminOnly, ah(async (req, res) => {
+  const worker = await prisma.worker.findUnique({ where: { id: req.params.id } });
+  if (!worker) return res.status(404).json({ error: 'Worker not found' });
+  if (worker.department !== req.auth.department) return res.status(403).json({ error: 'Not your department' });
+  if (!worker.clockedInAt) return res.status(400).json({ error: 'This worker is not clocked in' });
+  await closeOutClockSession(worker, new Date());
   await pushWorkers();
   res.json({ success: true, worker: await prisma.worker.findUnique({ where: { id: worker.id } }) });
 }));
@@ -235,13 +266,18 @@ app.patch('/api/tasks/:id', authRequired, ah(async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Task not found' });
 
   if (req.auth.role !== 'admin') {
-    // Workers may only flip `done` on their own assigned task — nothing else.
-    const keys = Object.keys(req.body || {});
+    // Workers may only flip `done`, or flag/unflag their own assigned task
+    // as blocked with a note — nothing else.
     if (existing.assignedToId !== req.auth.workerId) return res.status(403).json({ error: 'Not your task' });
-    if (keys.length !== 1 || keys[0] !== 'done' || typeof req.body.done !== 'boolean') {
-      return res.status(403).json({ error: 'Workers can only mark a task done/undone' });
+    const keys = Object.keys(req.body || {});
+    if (keys.length === 1 && keys[0] === 'done' && typeof req.body.done === 'boolean') {
+      const task = await prisma.task.update({ where: { id: req.params.id }, data: { done: req.body.done } });
+      await pushTasks();
+      return res.json({ success: true, task: serializeTask(task) });
     }
-    const task = await prisma.task.update({ where: { id: req.params.id }, data: { done: req.body.done } });
+    const parsedBlock = taskBlockSchema.safeParse(req.body || {});
+    if (!parsedBlock.success) return res.status(403).json({ error: 'Workers can only mark a task done/undone, or flag it as blocked' });
+    const task = await prisma.task.update({ where: { id: req.params.id }, data: parsedBlock.data });
     await pushTasks();
     return res.json({ success: true, task: serializeTask(task) });
   }
@@ -283,6 +319,16 @@ app.patch('/api/leave/:id', authRequired, adminOnly, validate(leaveUpdateSchema)
   if (!existing) return res.status(404).json({ error: 'Leave not found' });
   if (existing.worker.department !== req.auth.department) return res.status(403).json({ error: 'Not your department' });
   const leave = await prisma.leave.update({ where: { id: req.params.id }, data: { status: req.body.status } });
+  // Newly approving an Annual leave request draws down the worker's accrued
+  // balance, same as the "Current Vested Balance" / "Taken to Date" pattern.
+  if (req.body.status === 'approved' && existing.status !== 'approved' && existing.type === 'Annual') {
+    const hours = leaveDaysInclusive(existing.startDate, existing.endDate) * HOURS_PER_LEAVE_DAY;
+    await prisma.worker.update({
+      where: { id: existing.workerId },
+      data: { annualLeaveBalance: { decrement: hours }, annualLeaveTaken: { increment: hours } },
+    });
+    await pushWorkers();
+  }
   await pushLeaves();
   res.json({ success: true, leave });
 }));
@@ -314,6 +360,52 @@ app.delete('/api/availability/:id', authRequired, ah(async (req, res) => {
   if (!isOwner && !isDeptAdmin) return res.status(403).json({ error: 'Not allowed' });
   await prisma.availability.delete({ where: { id: req.params.id } });
   await pushAvailability();
+  res.json({ success: true });
+}));
+
+// ─────────── Open Shifts (swap board) ───────────
+// Workers post a shift they can't work, or claim one someone else (or an
+// admin, for an uncovered shift) has posted. No approval step — mirrors a
+// simple "Open Shift Available" board rather than a negotiated swap.
+app.post('/api/open-shifts', authRequired, validate(openShiftCreateSchema), ah(async (req, res) => {
+  const { date, from, to, note, ownerId } = req.body;
+  let finalOwnerId = null;
+  if (req.auth.role === 'worker') {
+    finalOwnerId = req.auth.workerId;
+  } else if (ownerId) {
+    const w = await prisma.worker.findUnique({ where: { id: ownerId } });
+    if (!w || w.department !== req.auth.department) return res.status(400).json({ error: 'ownerId must be a worker in your department' });
+    finalOwnerId = ownerId;
+  }
+  const openShift = await prisma.openShift.create({
+    data: { date, from, to, note, department: req.auth.department, ownerId: finalOwnerId },
+  });
+  await pushOpenShifts();
+  res.json({ success: true, openShift: serializeOpenShift(openShift) });
+}));
+
+app.post('/api/open-shifts/:id/claim', authRequired, ah(async (req, res) => {
+  if (req.auth.role !== 'worker') return res.status(403).json({ error: 'Only workers can claim an open shift' });
+  const existing = await prisma.openShift.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: 'Open shift not found' });
+  if (existing.department !== req.auth.department) return res.status(403).json({ error: 'Not your department' });
+  if (existing.status !== 'open') return res.status(400).json({ error: 'This shift has already been claimed' });
+  if (existing.ownerId === req.auth.workerId) return res.status(400).json({ error: "You can't claim your own shift" });
+  const openShift = await prisma.openShift.update({
+    where: { id: req.params.id }, data: { status: 'claimed', claimedById: req.auth.workerId },
+  });
+  await pushOpenShifts();
+  res.json({ success: true, openShift: serializeOpenShift(openShift) });
+}));
+
+app.delete('/api/open-shifts/:id', authRequired, ah(async (req, res) => {
+  const existing = await prisma.openShift.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: 'Open shift not found' });
+  const isOwner = req.auth.role === 'worker' && existing.ownerId === req.auth.workerId;
+  const isDeptAdmin = req.auth.role === 'admin' && existing.department === req.auth.department;
+  if (!isOwner && !isDeptAdmin) return res.status(403).json({ error: 'Not allowed' });
+  await prisma.openShift.delete({ where: { id: req.params.id } });
+  await pushOpenShifts();
   res.json({ success: true });
 }));
 

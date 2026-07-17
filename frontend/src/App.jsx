@@ -17,12 +17,14 @@ const SUB_TABS = [
   { key: 'hours', label: 'Hours' },
   { key: 'leave', label: 'Leave' },
   { key: 'availability', label: 'Availability' },
+  { key: 'openshifts', label: 'Open Shifts' },
 ];
 const SECTION_PURPOSE = {
   shift: 'Your shift at a glance — assigned tasks, wayfinding and live alerts.',
   hours: 'Track the hours you work. Clock in when you arrive, clock out when you leave.',
   leave: 'Request time off. Your manager sees it straight away.',
   availability: 'Tell us the shifts you’re free to pick up extra work.',
+  openshifts: 'Can’t make a shift? Post it here. Free that night? Pick one up.',
 };
 const LEAVE_TYPES = [
   { value: 'Annual', label: 'Annual leave' },
@@ -38,6 +40,7 @@ const SubTabIcon = ({ name }) => {
     case 'hours': return (<svg {...p}><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></svg>);
     case 'leave': return (<svg {...p}><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>);
     case 'availability': return (<svg {...p}><circle cx="12" cy="12" r="9" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>);
+    case 'openshifts': return (<svg {...p}><path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>);
     default: return null;
   }
 };
@@ -79,11 +82,20 @@ export default function App() {
   const [nightManagers, setNightManagers] = useState({});
   const [closures, setClosures] = useState([]);
   const [deptSettings, setDeptSettings] = useState({});
+  const [openShifts, setOpenShifts] = useState([]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [selectedWorkerId, setSelectedWorkerId] = useState(session?.workerId || null);
   const [leaveForm, setLeaveForm] = useState({ type: 'Annual', startDate: '', endDate: '', reason: '' });
   const [availForm, setAvailForm] = useState({ date: '', from: '', to: '', note: '' });
+  const [openShiftForm, setOpenShiftForm] = useState({ date: '', from: '', to: '', note: '' });
   const [openEasyWay, setOpenEasyWay] = useState(null);
+  const [flaggingTaskId, setFlaggingTaskId] = useState(null);
+  const [flagNoteDraft, setFlagNoteDraft] = useState('');
+  // Ward-round groups are collapsed by default (undefined => collapsed) — the
+  // shift card above already shows each group's progress at a glance, so the
+  // full ward-by-ward checklist is progressive disclosure, not the default view.
+  const [expandedGroups, setExpandedGroups] = useState({});
+  const toggleGroup = (key) => setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }));
   const { done, toggle, reset, doneCount, pct, total } = useRounds();
   const { toggle: toggleTheme, isDark } = useTheme();
 
@@ -103,6 +115,7 @@ export default function App() {
     try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
     setBins([]); setNotifications([]); setWorkers([]); setTasks([]); setLeaves([]);
     setAvailability([]); setHoursLog([]); setNightManagers({}); setClosures([]); setDeptSettings({});
+    setOpenShifts([]);
     setDataLoaded(false);
   };
 
@@ -135,7 +148,7 @@ export default function App() {
         setAreas(d.areas || []); setLeaves(d.leaves || []);
         setAvailability(d.availability || []); setHoursLog(d.hoursLog || []);
         setNightManagers(d.nightManagers || {}); setClosures(d.closures || []);
-        setDeptSettings(d.deptSettings || {});
+        setDeptSettings(d.deptSettings || {}); setOpenShifts(d.openShifts || []);
       }).catch(() => {}).finally(() => setDataLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
@@ -144,6 +157,8 @@ export default function App() {
   const deptWorkers = workers.filter(w => (w.department || 'linen') === selectedDept);
   const deptWorkerIds = new Set(deptWorkers.map(w => w.id));
   const deptTasks = tasks.filter(t => (t.department || 'linen') === selectedDept);
+  const deptOpenShifts = openShifts.filter(o => o.department === selectedDept);
+  const workerNameById = (id) => (id ? (workers.find(w => w.id === id)?.name || 'Unknown') : null);
 
   // Keep a valid selected worker for the current department
   useEffect(() => {
@@ -173,13 +188,14 @@ export default function App() {
         case 'NIGHT_MANAGERS_SET': setNightManagers(msg.data || {}); break;
         case 'CLOSURES_SET': setClosures(msg.data || []); break;
         case 'DEPT_SETTINGS_SET': setDeptSettings(msg.data || {}); break;
+        case 'OPEN_SHIFTS_SET': setOpenShifts(msg.data || []); break;
         case 'RESET_STATE':
           setBins(msg.data.bins || []); setNotifications(msg.data.notifications || []);
           setWorkers(msg.data.workers || []); setTasks(msg.data.tasks || []);
           setAreas(msg.data.areas || []); setLeaves(msg.data.leaves || []);
           setAvailability(msg.data.availability || []); setHoursLog(msg.data.hoursLog || []);
           setNightManagers(msg.data.nightManagers || {}); setClosures(msg.data.closures || []);
-          setDeptSettings(msg.data.deptSettings || {});
+          setDeptSettings(msg.data.deptSettings || {}); setOpenShifts(msg.data.openShifts || []);
           break;
         default: break;
       }
@@ -203,6 +219,7 @@ export default function App() {
     updateNightManager: (b) => jsonReq(`/api/night-manager/${selectedDept}`, 'PATCH', b),
     sendBreak: (workerId) => jsonReq('/api/notifications/break', 'POST', { workerId }),
     clockWorker: (id, action) => jsonReq(`/api/workers/${id}/clock`, 'POST', { action }),
+    forceClockOut: (id) => jsonReq(`/api/workers/${id}/force-clock-out`, 'POST'),
     fillBin: (id, fillLevel) => jsonReq(`/api/bins/${id}/fill`, 'POST', { fillLevel }),
     acknowledgeNotif: (id) => jsonReq(`/api/notifications/${id}/acknowledge`, 'POST'),
     resolveNotif: (id) => jsonReq(`/api/notifications/${id}/resolve`, 'POST'),
@@ -210,6 +227,9 @@ export default function App() {
     updateClosure: (id, b) => jsonReq(`/api/closures/${id}`, 'PATCH', b),
     deleteClosure: (id) => jsonReq(`/api/closures/${id}`, 'DELETE'),
     updateDeptSettings: (b) => jsonReq(`/api/dept-settings/${selectedDept}`, 'PATCH', b),
+    postOpenShift: (b) => jsonReq('/api/open-shifts', 'POST', b),
+    claimOpenShift: (id) => jsonReq(`/api/open-shifts/${id}/claim`, 'POST'),
+    deleteOpenShift: (id) => jsonReq(`/api/open-shifts/${id}`, 'DELETE'),
   };
 
   const simulateFullBin = () => {
@@ -222,6 +242,11 @@ export default function App() {
 
   const handleRound = (id) => { if (!done.has(id)) playCheckSound(); toggle(id); };
   const handleTaskToggle = (t) => { if (!t.done) playCheckSound(); api.updateTask(t.id, { done: !t.done }); };
+  const submitFlag = (taskId) => {
+    api.updateTask(taskId, { blocked: true, blockedNote: flagNoteDraft.trim() });
+    setFlaggingTaskId(null); setFlagNoteDraft('');
+  };
+  const clearFlag = (taskId) => api.updateTask(taskId, { blocked: false, blockedNote: '' });
   const submitLeave = (e) => {
     e.preventDefault();
     if (!selectedWorkerId || !leaveForm.startDate || !leaveForm.endDate) return;
@@ -233,6 +258,12 @@ export default function App() {
     if (!selectedWorkerId || !availForm.date) return;
     api.createAvailability({ workerId: selectedWorkerId, ...availForm });
     setAvailForm({ date: '', from: '', to: '', note: '' });
+  };
+  const submitOpenShift = (e) => {
+    e.preventDefault();
+    if (!openShiftForm.date) return;
+    api.postOpenShift(openShiftForm);
+    setOpenShiftForm({ date: '', from: '', to: '', note: '' });
   };
 
   const groups = ROUND_GROUPS.map(g => ({ ...g, done: g.tasks.filter(t => done.has(t.id)).length }));
@@ -247,6 +278,8 @@ export default function App() {
   const topAlert = activeAlerts[activeAlerts.length - 1];
   const activeClosures = closures.filter(c => c.active && (c.department === selectedDept || c.department === 'all'));
   const deptGuides = DEPT_GUIDES[selectedDept];
+  const scheduleWindow = deptSettings[selectedDept];
+  const hasScheduleWindow = !!scheduleWindow?.scheduleWindowMessage;
   // Admin-controlled: whether this department's workers see the ward-round
   // checklist (both here and inside the Floor Map). Falls back to the
   // department's default (only Linen) until an admin has set it explicitly.
@@ -266,6 +299,17 @@ export default function App() {
   const myLeaves = leaves.filter(l => l.workerId === selectedWorkerId);
   const myAvailability = availability.filter(a => a.workerId === selectedWorkerId);
   const myHours = hoursLog.filter(h => h.workerId === selectedWorkerId);
+
+  // "For You Today" — a short, prioritized digest built from data already
+  // loaded, same idea as SuccessFactors' "For You Today" action feed.
+  const digestItems = [];
+  const myPendingLeaveCount = myLeaves.filter(l => l.status === 'pending').length;
+  if (myPendingLeaveCount > 0) digestItems.push({ icon: '📋', text: `${myPendingLeaveCount} leave request${myPendingLeaveCount > 1 ? 's' : ''} awaiting a decision` });
+  const openShiftsAvailable = deptOpenShifts.filter(o => o.status === 'open' && o.owner !== selectedWorkerId).length;
+  if (openShiftsAvailable > 0) digestItems.push({ icon: '🔄', text: `${openShiftsAvailable} open shift${openShiftsAvailable > 1 ? 's' : ''} available to pick up` });
+  if (worker && worker.annualLeaveBalance > 0 && worker.annualLeaveBalance < 8) digestItems.push({ icon: '⚠️', text: `Annual leave balance is low — ${worker.annualLeaveBalance.toFixed(1)}h left` });
+  const myBlockedTaskCount = myTasks.filter(t => t.blocked).length;
+  if (myBlockedTaskCount > 0) digestItems.push({ icon: '🚩', text: `${myBlockedTaskCount} of your tasks flagged as blocked — your supervisor can see it` });
   const nightManager = nightManagers[selectedDept] || null;
 
   // Shift-time ring
@@ -384,7 +428,8 @@ export default function App() {
             <AdminConsole workers={deptWorkers} tasks={deptTasks} areas={areas} leaves={leaves.filter(l => deptWorkerIds.has(l.workerId))}
               availability={availability.filter(a => deptWorkerIds.has(a.workerId))} nightManager={nightManager} api={api}
               bins={bins} notifications={notifications} hoursLog={hoursLog.filter(h => deptWorkerIds.has(h.workerId))}
-              department={selectedDept} deptConfig={deptConfig} closures={closures} showWardRounds={showWardRounds} />
+              department={selectedDept} deptConfig={deptConfig} closures={closures} showWardRounds={showWardRounds}
+              openShifts={deptOpenShifts} scheduleWindow={scheduleWindow} />
           </section>
         )}
 
@@ -411,6 +456,10 @@ export default function App() {
                   <div className="adm-empty">Your worker profile was removed by an admin — log out and sign in again.</div>
                 )}
 
+                {/* Full progress detail only on the Shift tab itself — other tabs
+                    (Hours/Leave/Availability/Open Shifts) just need the identity
+                    header above, not the whole ward breakdown repeated again. */}
+                {workerSection === 'shift' && (<>
                 <div className="shift-progress">
                   {showWardRounds && (
                     <div className="shift-ring-wrap">
@@ -451,6 +500,7 @@ export default function App() {
                     Reset rounds
                   </button>
                 )}
+                </>)}
               </div>
 
               {/* Worker sub-navigation: Shift / Hours / Leave / Availability */}
@@ -460,10 +510,36 @@ export default function App() {
                     <span className="worker-subtab-ic"><SubTabIcon name={s.key} /></span>{s.label}
                     {s.key === 'leave' && myLeaves.length > 0 && <span className="worker-subtab-badge">{myLeaves.length}</span>}
                     {s.key === 'availability' && myAvailability.length > 0 && <span className="worker-subtab-badge">{myAvailability.length}</span>}
+                    {s.key === 'openshifts' && deptOpenShifts.filter(o => o.status === 'open').length > 0 && <span className="worker-subtab-badge">{deptOpenShifts.filter(o => o.status === 'open').length}</span>}
                   </button>
                 ))}
               </div>
               <p className="section-purpose">{SECTION_PURPOSE[workerSection]}</p>
+
+              {/* For You Today — prioritized digest */}
+              {workerSection === 'shift' && digestItems.length > 0 && (
+                <div className="digest-card glass-panel">
+                  <div className="digest-title">For You Today</div>
+                  <div className="digest-list">
+                    {digestItems.map((d, i) => (
+                      <div key={i} className="digest-item"><span className="digest-icon">{d.icon}</span>{d.text}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Self-schedule request window — admin-controlled announcement */}
+              {workerSection === 'shift' && hasScheduleWindow && (
+                <div className="schedule-window-banner">
+                  <span className="closure-banner-icon">🗓️</span>
+                  <div className="closure-banner-text">
+                    {scheduleWindow.scheduleWindowStart && scheduleWindow.scheduleWindowEnd && (
+                      <div><b>Roster window open:</b> submit requests for {scheduleWindow.scheduleWindowStart} to {scheduleWindow.scheduleWindowEnd}</div>
+                    )}
+                    <div>{scheduleWindow.scheduleWindowMessage}</div>
+                  </div>
+                </div>
+              )}
 
               {/* Hours worked — real clock-in data */}
               {workerSection === 'hours' && (
@@ -491,6 +567,18 @@ export default function App() {
                   <span className="rounds-title">Leave Requests</span>
                   <span className="rounds-tag">visible to admin</span>
                 </div>
+                {worker && (
+                  <div className="leave-balance-row">
+                    <div className="leave-balance-stat">
+                      <span className="leave-balance-n">{worker.annualLeaveBalance.toFixed(1)}h</span>
+                      <span className="leave-balance-l">Annual leave balance</span>
+                    </div>
+                    <div className="leave-balance-stat">
+                      <span className="leave-balance-n">{worker.annualLeaveTaken.toFixed(1)}h</span>
+                      <span className="leave-balance-l">Taken to date</span>
+                    </div>
+                  </div>
+                )}
                 <form className="mini-form" onSubmit={submitLeave}>
                   <div className="mini-form-grid">
                     <Dropdown block value={leaveForm.type} onChange={v => setLeaveForm({ ...leaveForm, type: v })} options={LEAVE_TYPES} />
@@ -549,6 +637,62 @@ export default function App() {
               </div>
               )}
 
+              {/* Open Shifts — post a shift you can't work, or claim one that's open */}
+              {workerSection === 'openshifts' && (
+              <div className="rounds-card glass-panel">
+                <div className="rounds-head">
+                  <span className="rounds-dot" style={{ background: 'var(--accent-color)' }} />
+                  <span className="rounds-title">Post a Shift</span>
+                  <span className="rounds-tag">can't make it? offer it up</span>
+                </div>
+                <form className="mini-form" onSubmit={submitOpenShift}>
+                  <div className="mini-form-grid">
+                    <input type="date" value={openShiftForm.date} onChange={e => setOpenShiftForm({ ...openShiftForm, date: e.target.value })} />
+                    <input placeholder="From (e.g. 10:30 PM)" value={openShiftForm.from} onChange={e => setOpenShiftForm({ ...openShiftForm, from: e.target.value })} />
+                    <input placeholder="To (e.g. 7:00 AM)" value={openShiftForm.to} onChange={e => setOpenShiftForm({ ...openShiftForm, to: e.target.value })} />
+                    <input placeholder="Note (optional)" value={openShiftForm.note} onChange={e => setOpenShiftForm({ ...openShiftForm, note: e.target.value })} />
+                  </div>
+                  <button className="adm-btn primary" type="submit">Post shift as open</button>
+                </form>
+              </div>
+              )}
+
+              {workerSection === 'openshifts' && (
+              <div className="rounds-card glass-panel">
+                <div className="rounds-head">
+                  <span className="rounds-dot" style={{ background: 'var(--color-success)' }} />
+                  <span className="rounds-title">Open Shifts</span>
+                  <span className="rounds-tag">{deptOpenShifts.filter(o => o.status === 'open').length} open</span>
+                </div>
+                <div className="req-list">
+                  {deptOpenShifts.length === 0 && <div className="adm-empty">No open shifts right now.</div>}
+                  {deptOpenShifts.map(o => {
+                    const isMine = o.owner === selectedWorkerId;
+                    const claimedByMe = o.claimedBy === selectedWorkerId;
+                    return (
+                      <div key={o.id} className="req-row">
+                        <span className={`req-status ${o.status === 'open' ? 'pending' : 'approved'}`}>{o.status === 'open' ? 'open' : 'claimed'}</span>
+                        <div className="req-main">
+                          <div className="req-title">{o.date}</div>
+                          <div className="req-sub">
+                            {o.from || '—'}{o.to ? ` – ${o.to}` : ''}{o.note ? ` · ${o.note}` : ''}
+                            {' · '}{o.owner ? `${isMine ? 'You' : workerNameById(o.owner)}'s shift` : 'Needs coverage'}
+                            {o.status === 'claimed' && ` · claimed by ${claimedByMe ? 'you' : workerNameById(o.claimedBy)}`}
+                          </div>
+                        </div>
+                        {isMine && o.status === 'open' && (
+                          <button className="req-x" aria-label="Cancel open shift" onClick={() => api.deleteOpenShift(o.id)}>✕</button>
+                        )}
+                        {!isMine && o.status === 'open' && (
+                          <button className="adm-btn primary" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => api.claimOpenShift(o.id)}>Claim</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              )}
+
               {/* My assigned tasks (from admin) */}
               {workerSection === 'shift' && (<>
               <div className="rounds-card glass-panel">
@@ -573,6 +717,10 @@ export default function App() {
                           <button className="task-floor-badge" title="Pinned on the Floor Map — check it off there too" onClick={(e) => { e.preventDefault(); setActiveTab('map'); }}>📍 map</button>
                         )}
                         <span className="task-floor-badge" style={{ textTransform: 'capitalize' }}>{t.priority}</span>
+                        {!t.blocked && (
+                          <button className="task-flag-icon" title="Flag an issue with this task" aria-label="Flag an issue"
+                            onClick={(e) => { e.preventDefault(); setFlaggingTaskId(flaggingTaskId === t.id ? null : t.id); setFlagNoteDraft(''); }}>🚩</button>
+                        )}
                       </label>
                       {t.easyWay && (
                         <div className="easyway">
@@ -580,6 +728,19 @@ export default function App() {
                             💡 Easy way to finish this {openEasyWay === t.id ? '▲' : '▼'}
                           </button>
                           {openEasyWay === t.id && <div className="easyway-body">{t.easyWay}</div>}
+                        </div>
+                      )}
+                      {t.blocked && (
+                        <div className="task-flag-banner">
+                          <span>🚩 Flagged: {t.blockedNote || 'No details given'}</span>
+                          <button className="task-flag-clear" onClick={() => clearFlag(t.id)}>Clear</button>
+                        </div>
+                      )}
+                      {!t.blocked && flaggingTaskId === t.id && (
+                        <div className="task-flag-form">
+                          <input autoFocus placeholder="What's blocking this? (e.g. room locked, no supplies)" value={flagNoteDraft} onChange={e => setFlagNoteDraft(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitFlag(t.id)} />
+                          <button className="adm-btn primary" onClick={() => submitFlag(t.id)}>Flag</button>
+                          <button className="adm-btn ghost" onClick={() => { setFlaggingTaskId(null); setFlagNoteDraft(''); }}>Cancel</button>
                         </div>
                       )}
                     </div>
@@ -643,12 +804,14 @@ export default function App() {
               {/* Nightly cleaning rounds */}
               {showWardRounds && groups.map(g => (
                 <div key={g.key} className="rounds-card glass-panel">
-                  <div className="rounds-head">
+                  <button className="rounds-head rounds-head-toggle" onClick={() => toggleGroup(g.key)} aria-expanded={!!expandedGroups[g.key]}>
                     <span className="rounds-dot" style={{ background: g.color }} />
                     <span className="rounds-title">{g.title}</span>
                     <span className="rounds-tag">{g.tag}</span>
                     <span className={`rounds-count ${g.done === g.tasks.length ? 'complete' : ''}`}>{g.done}/{g.tasks.length}</span>
-                  </div>
+                    <svg className={`rounds-chevron ${expandedGroups[g.key] ? 'open' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                  </button>
+                  {expandedGroups[g.key] && (
                   <div className="rounds-list">
                     {g.tasks.map(t => (
                       <label key={t.id} className={`task-row ${done.has(t.id) ? 'is-done' : ''}`}>
@@ -662,6 +825,7 @@ export default function App() {
                       </label>
                     ))}
                   </div>
+                  )}
                 </div>
               ))}
               </>)}

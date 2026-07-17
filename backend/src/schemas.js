@@ -25,6 +25,7 @@ export const workerUpdateSchema = z.object({
   shift: z.string().optional(),
   phone: z.string().optional(),
   status: z.string().optional(),
+  annualLeaveBalance: z.number().min(0).optional(),
 });
 
 export const taskCreateSchema = z.object({
@@ -44,6 +45,13 @@ export const taskUpdateSchema = z.object({
   done: z.boolean().optional(),
   easyWay: z.string().optional(),
   pinId: z.string().nullable().optional(),
+  blocked: z.boolean().optional(),
+  blockedNote: z.string().optional(),
+});
+
+export const taskBlockSchema = z.object({
+  blocked: z.boolean(),
+  blockedNote: z.string().optional().default(''),
 });
 
 export const leaveCreateSchema = z.object({
@@ -73,6 +81,17 @@ export const nightManagerSchema = z.object({
 
 export const deptSettingSchema = z.object({
   showWardRounds: z.boolean().optional(),
+  scheduleWindowStart: z.string().optional(),
+  scheduleWindowEnd: z.string().optional(),
+  scheduleWindowMessage: z.string().optional(),
+});
+
+export const openShiftCreateSchema = z.object({
+  date: z.string().min(1),
+  from: z.string().optional().default(''),
+  to: z.string().optional().default(''),
+  note: z.string().optional().default(''),
+  ownerId: z.string().nullable().optional(),
 });
 
 export const closureCreateSchema = z.object({

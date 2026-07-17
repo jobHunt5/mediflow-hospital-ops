@@ -59,6 +59,15 @@ export default function HoursChart({ entries = [], worker = null, onClock }) {
     elapsedLabel = `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`;
   }
 
+  // Timecard exceptions — same idea as UKG's "Exceptions" count: shifts
+  // that came in well short of a full 8h shift, plus a clock-in that's
+  // been running suspiciously long (a likely missed clock-out).
+  const SHORT_SHIFT_HOURS = 6;
+  const STUCK_CLOCK_HOURS = 12;
+  const shortShiftCount = monthDays.filter(c => c.hours > 0 && c.hours < SHORT_SHIFT_HOURS).length;
+  const stuckClockIn = clockedIn && (Date.now() - new Date(worker.clockedInAt).getTime()) > STUCK_CLOCK_HOURS * 3600000;
+  const exceptions = shortShiftCount + (stuckClockIn ? 1 : 0);
+
   return (
     <div className="hours-card glass-panel">
       <div className="hours-head">
@@ -94,6 +103,10 @@ export default function HoursChart({ entries = [], worker = null, onClock }) {
           <div className="hero-stat"><span className="hero-stat-n">{shifts}</span><span className="hero-stat-l">shifts</span></div>
           <div className="hero-stat"><span className="hero-stat-n">{fmt(avg)}h</span><span className="hero-stat-l">avg</span></div>
           <div className="hero-stat"><span className="hero-stat-n">{fmt(best)}h</span><span className="hero-stat-l">best day</span></div>
+          <div className="hero-stat" title={stuckClockIn ? 'Includes a clock-in still running after 12+ hours' : 'Shifts logged under 6h this month'}>
+            <span className="hero-stat-n" style={exceptions > 0 ? { color: 'var(--color-error-ink)' } : undefined}>{exceptions}</span>
+            <span className="hero-stat-l">exceptions</span>
+          </div>
         </div>
       </div>
 

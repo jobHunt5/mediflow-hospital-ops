@@ -70,14 +70,35 @@ function OverviewTile({ label, n, of, tone = 'accent' }) {
   );
 }
 
-function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak, onResetPassword }) {
+const STUCK_CLOCK_HOURS = 12;
+function elapsedSince(iso) {
+  const ms = Math.max(0, Date.now() - new Date(iso).getTime());
+  const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+  return { hours: ms / 3600000, label: `${h}h ${m}m` };
+}
+
+function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak, onResetPassword, onForceClockOut }) {
   const [editing, setEditing] = useState(false);
   const [f, setF] = useState(() => ({ ...worker, ...parseShiftRange(worker.shift, { shiftStart: '', shiftEnd: '' }) }));
   const toast = useToast();
   const confirmDialog = useConfirm();
+  const elapsed = worker.clockedInAt ? elapsedSince(worker.clockedInAt) : null;
+  const stuck = elapsed && elapsed.hours > STUCK_CLOCK_HOURS;
+  const forceClockOut = async () => {
+    const ok = await confirmDialog({
+      title: `Clock ${worker.name} out?`,
+      body: `They've been clocked in for ${elapsed.label}. This logs their hours up to now and clocks them out — use this when someone forgot to clock out.`,
+      confirmLabel: 'Clock out now',
+      danger: true,
+    });
+    if (!ok) return;
+    onForceClockOut(worker.id);
+    toast.success('Clocked out', `${worker.name}'s hours were logged and they were clocked out.`);
+  };
   const save = () => {
     const shift = formatShiftRange(f.shiftStart, f.shiftEnd) || f.shift;
-    onSave(worker.id, { name: f.name, role: f.role, zone: f.zone, shift, phone: f.phone });
+    const annualLeaveBalance = Number(f.annualLeaveBalance);
+    onSave(worker.id, { name: f.name, role: f.role, zone: f.zone, shift, phone: f.phone, annualLeaveBalance: Number.isFinite(annualLeaveBalance) ? annualLeaveBalance : 0 });
     setEditing(false);
     toast.success('Worker updated', `${f.name}'s details were saved.`);
   };
@@ -109,6 +130,10 @@ function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak, onResetPasswo
             <span className="adm-shift-label">Shift end</span>
             <input type="time" value={f.shiftEnd || ''} onChange={e => setF({ ...f, shiftEnd: e.target.value })} />
           </label>
+          <label className="adm-shift-field">
+            <span className="adm-shift-label">Annual leave balance (h)</span>
+            <input type="number" min="0" step="0.5" value={f.annualLeaveBalance ?? 0} onChange={e => setF({ ...f, annualLeaveBalance: e.target.value })} />
+          </label>
         </div>
         <div className="adm-row-actions">
           <button className="adm-btn save" onClick={save}>Save</button>
@@ -123,12 +148,15 @@ function WorkerRow({ worker, taskCount, onSave, onDelete, onBreak, onResetPasswo
       <div className="adm-worker-main">
         <div className="adm-worker-name">
           {worker.name}
-          {worker.clockedInAt && <span className="adm-live-badge">● on shift</span>}
+          {worker.clockedInAt && <span className={`adm-live-badge ${stuck ? 'stuck' : ''}`}>● on shift · {elapsed.label}</span>}
         </div>
         <div className="adm-worker-sub">{worker.role || '—'}{worker.zone ? ` · ${worker.zone}` : ''}</div>
-        <div className="adm-worker-meta">{worker.shift}{worker.phone ? ` · ${worker.phone}` : ''} · <b>{taskCount}</b> task{taskCount !== 1 ? 's' : ''}</div>
+        <div className="adm-worker-meta">{worker.shift}{worker.phone ? ` · ${worker.phone}` : ''} · <b>{taskCount}</b> task{taskCount !== 1 ? 's' : ''} · <b>{(worker.annualLeaveBalance ?? 0).toFixed(1)}h</b> annual leave</div>
       </div>
       <div className="adm-row-actions">
+        {worker.clockedInAt && (
+          <button className={`adm-btn ${stuck ? 'danger' : 'ghost'}`} onClick={forceClockOut}>⏱ Force clock out</button>
+        )}
         <button className="adm-btn coffee" onClick={() => onBreak(worker.id)}>☕ Break</button>
         <button className="adm-btn ghost" onClick={() => onResetPassword(worker.id)}>🔑 Reset password</button>
         <button className="adm-btn ghost" onClick={() => setEditing(true)}>Edit</button>
@@ -176,6 +204,7 @@ function TaskRow({ task, workers, areas, onSave, onDelete, onToggle, onDuplicate
           <>
             <div className="adm-task-title">{task.title}{task.easyWay ? <span className="adm-tip-flag" title={task.easyWay}> 💡</span> : ''}</div>
             <div className="adm-task-sub">{task.area || 'No area'}{pinLabel(task.pinId) ? ` · 📍 ${pinLabel(task.pinId)}` : ''}</div>
+            {task.blocked && <div className="task-flag-banner">🚩 {task.blockedNote || 'Worker flagged an issue'}</div>}
           </>
         )}
       </div>
@@ -186,6 +215,7 @@ function TaskRow({ task, workers, areas, onSave, onDelete, onToggle, onDuplicate
         {editing
           ? (<><button className="adm-btn save" onClick={save}>Save</button><button className="adm-btn ghost" onClick={() => setEditing(false)}>Cancel</button></>)
           : (<>
+              {task.blocked && <button className="adm-btn save" onClick={() => onSave(task.id, { blocked: false, blockedNote: '' })}>Clear flag</button>}
               <button className="adm-btn ghost" title="Duplicate for tomorrow night" aria-label="Duplicate task" onClick={duplicate}>⧉</button>
               <button className="adm-btn ghost" onClick={() => { setF(task); setEditing(true); }}>Edit</button>
               <button className="adm-btn danger" onClick={remove}>Delete</button>
@@ -197,7 +227,7 @@ function TaskRow({ task, workers, areas, onSave, onDelete, onToggle, onDuplicate
 
 const emptyDept = { id: 'linen', name: 'Linen & Environmental Services', short: 'Linen', accent: 'var(--accent-color)', managerTitle: 'Night Manager', workerTitle: 'Worker', shiftDefault: '10:30 PM - 7:00 AM', hasBins: true };
 
-export default function AdminConsole({ workers, tasks, areas = [], leaves = [], availability = [], nightManager, api, bins = [], notifications = [], hoursLog = [], department = 'linen', deptConfig = emptyDept, closures = [], showWardRounds = false }) {
+export default function AdminConsole({ workers, tasks, areas = [], leaves = [], availability = [], nightManager, api, bins = [], notifications = [], hoursLog = [], department = 'linen', deptConfig = emptyDept, closures = [], showWardRounds = false, openShifts = [], scheduleWindow = null }) {
   const toast = useToast();
   const confirmDialog = useConfirm();
   const [tab, setTab] = useState('overview');
@@ -209,15 +239,39 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
   const [wSearch, setWSearch] = useState('');
   const [tSearch, setTSearch] = useState('');
   const [clForm, setClForm] = useState({ title: '', message: '' });
+  const [swForm, setSwForm] = useState(() => ({
+    scheduleWindowStart: scheduleWindow?.scheduleWindowStart || '',
+    scheduleWindowEnd: scheduleWindow?.scheduleWindowEnd || '',
+    scheduleWindowMessage: scheduleWindow?.scheduleWindowMessage || '',
+  }));
+  const [swSaved, setSwSaved] = useState(false);
+  const [osForm, setOsForm] = useState({ date: '', from: '', to: '', note: '' });
 
   React.useEffect(() => { setWForm(f => ({ ...f, ...parseShiftRange(deptConfig.shiftDefault) })); setTab('overview'); }, [department]);
 
   React.useEffect(() => { if (nightManager) setNm(nightManager); }, [nightManager]);
 
+  React.useEffect(() => {
+    setSwForm({
+      scheduleWindowStart: scheduleWindow?.scheduleWindowStart || '',
+      scheduleWindowEnd: scheduleWindow?.scheduleWindowEnd || '',
+      scheduleWindowMessage: scheduleWindow?.scheduleWindowMessage || '',
+    });
+  }, [scheduleWindow]);
+
   const saveNightManager = () => {
     api.updateNightManager(nm);
     setNmSaved(true);
     setTimeout(() => setNmSaved(false), 2200);
+  };
+
+  const saveScheduleWindow = () => {
+    api.updateDeptSettings(swForm);
+    setSwSaved(true);
+    setTimeout(() => setSwSaved(false), 2200);
+  };
+  const clearScheduleWindow = () => {
+    api.updateDeptSettings({ scheduleWindowStart: '', scheduleWindowEnd: '', scheduleWindowMessage: '' });
   };
 
   const workerName = (id) => workers.find(w => w.id === id)?.name || 'Unknown';
@@ -260,6 +314,7 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
   };
   const duplicateTask = (task) => api.createTask({ title: task.title, area: task.area, priority: task.priority, assignedTo: null, easyWay: task.easyWay || '', pinId: task.pinId || null });
   const submitClosure = (e) => { e.preventDefault(); if (!clForm.title.trim() || !clForm.message.trim()) return; api.createClosure({ ...clForm, department }); setClForm({ title: '', message: '' }); };
+  const submitOpenShift = (e) => { e.preventDefault(); if (!osForm.date) return; api.postOpenShift(osForm); setOsForm({ date: '', from: '', to: '', note: '' }); };
 
   const doneCount = tasks.filter(t => t.done).length;
   const pendingLeave = leaves.filter(l => l.status === 'pending').length;
@@ -290,9 +345,10 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
   const TABS = [
     { key: 'overview', label: 'Overview' },
     { key: 'workers', label: `Workers (${workers.length})` },
-    { key: 'tasks', label: `Tasks (${tasks.length})` },
-    ...(deptConfig.hasBins ? [{ key: 'bins', label: `Bins (${bins.filter(b => b.status !== 'empty').length})` }] : []),
+    { key: 'tasks', label: `Tasks (${tasks.length})${tasks.filter(t => t.blocked).length ? ` · ${tasks.filter(t => t.blocked).length} 🚩` : ''}` },
+    ...(deptConfig.hasBins ? [{ key: 'bins', label: `Bins (${bins.length})` }] : []),
     { key: 'requests', label: `Requests (${pendingLeave + availability.length})` },
+    { key: 'openshifts', label: `Open Shifts (${openShifts.filter(o => o.status === 'open').length})` },
     { key: 'hours', label: 'Hours' },
     { key: 'team', label: deptConfig.managerTitle },
     { key: 'closures', label: `Wayfinding Alerts${closures.filter(c => c.active).length ? ` (${closures.filter(c => c.active).length})` : ''}` },
@@ -416,7 +472,8 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
             {workers.length > 0 && filteredWorkers.length === 0 && <div className="adm-empty">No workers match “{wSearch}”.</div>}
             {filteredWorkers.map(w => (
               <WorkerRow key={w.id} worker={w} taskCount={tasks.filter(t => t.assignedTo === w.id).length}
-                onSave={api.updateWorker} onDelete={api.deleteWorker} onBreak={api.sendBreak} onResetPassword={resetWorkerPassword} />
+                onSave={api.updateWorker} onDelete={api.deleteWorker} onBreak={api.sendBreak} onResetPassword={resetWorkerPassword}
+                onForceClockOut={api.forceClockOut} />
             ))}
           </div>
         </div>
@@ -548,6 +605,46 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
         </div>
       )}
 
+      {tab === 'openshifts' && (
+        <div className="adm-panel glass-panel">
+          <div className="adm-panel-head">
+            <span className="adm-panel-ic"><AdmIcon name="avail" /></span>
+            <div className="adm-panel-hgroup">
+              <span className="adm-panel-title">Open Shifts</span>
+              <span className="adm-panel-purpose">Post a shift that needs coverage, or see which worker-posted shifts are still unclaimed.</span>
+            </div>
+            <span className="adm-panel-count">{openShifts.filter(o => o.status === 'open').length} open</span>
+          </div>
+          <form className="adm-form" onSubmit={submitOpenShift}>
+            <div className="adm-form-grid">
+              <input type="date" value={osForm.date} onChange={e => setOsForm({ ...osForm, date: e.target.value })} />
+              <input placeholder="From (e.g. 10:30 PM)" value={osForm.from} onChange={e => setOsForm({ ...osForm, from: e.target.value })} />
+              <input placeholder="To (e.g. 7:00 AM)" value={osForm.to} onChange={e => setOsForm({ ...osForm, to: e.target.value })} />
+              <input placeholder="Note (optional)" value={osForm.note} onChange={e => setOsForm({ ...osForm, note: e.target.value })} />
+            </div>
+            <button className="adm-btn primary" type="submit">+ Post open shift needing coverage</button>
+          </form>
+          <div className="adm-list">
+            {openShifts.length === 0 && <div className="adm-empty">No open shifts posted.</div>}
+            {openShifts.map(o => (
+              <div key={o.id} className="adm-row adm-req">
+                <span className={`req-status ${o.status === 'open' ? 'pending' : 'approved'}`}>{o.status === 'open' ? 'open' : 'claimed'}</span>
+                <div className="adm-task-main">
+                  <div className="adm-task-title">{o.date} · {o.owner ? workerName(o.owner) : 'Needs coverage'}</div>
+                  <div className="adm-task-sub">
+                    {o.from || '—'}{o.to ? ` – ${o.to}` : ''}{o.note ? ` · ${o.note}` : ''}
+                    {o.status === 'claimed' && ` · claimed by ${workerName(o.claimedBy)}`}
+                  </div>
+                </div>
+                <div className="adm-row-actions">
+                  <button className="adm-btn danger" onClick={() => api.deleteOpenShift(o.id)}>{o.status === 'open' ? 'Remove' : 'Clear'}</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {tab === 'hours' && (
         <div className="adm-panel glass-panel">
           <div className="adm-panel-head">
@@ -621,6 +718,37 @@ export default function AdminConsole({ workers, tasks, areas = [], leaves = [], 
               onClick={() => api.updateDeptSettings({ showWardRounds: !showWardRounds })}>
               <span className="adm-switch-knob" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'team' && (
+        <div className="adm-panel glass-panel" style={{ maxWidth: 520 }}>
+          <div className="adm-panel-head">
+            <span className="adm-panel-ic"><AdmIcon name="hours" /></span>
+            <div className="adm-panel-hgroup">
+              <span className="adm-panel-title">Self-Schedule Request Window</span>
+              <span className="adm-panel-purpose">Announce a roster/availability request window on workers' Shift page — same idea as UKG's self-schedule banner.</span>
+            </div>
+          </div>
+          <div className="adm-form">
+            <div className="adm-form-grid">
+              <label className="adm-shift-field">
+                <span className="adm-shift-label">Window start</span>
+                <input type="date" value={swForm.scheduleWindowStart} onChange={e => setSwForm({ ...swForm, scheduleWindowStart: e.target.value })} />
+              </label>
+              <label className="adm-shift-field">
+                <span className="adm-shift-label">Window end</span>
+                <input type="date" value={swForm.scheduleWindowEnd} onChange={e => setSwForm({ ...swForm, scheduleWindowEnd: e.target.value })} />
+              </label>
+            </div>
+            <textarea className="adm-textarea" value={swForm.scheduleWindowMessage} onChange={e => setSwForm({ ...swForm, scheduleWindowMessage: e.target.value })} placeholder="Message workers will see (e.g. 'Submit your availability for next roster now')" rows={2} />
+            <div className="adm-row-actions">
+              <button className={`adm-btn ${swSaved ? 'saved-ok' : 'primary'}`} onClick={saveScheduleWindow}>
+                {swSaved ? '✓ Saved — workers updated' : 'Save & show banner'}
+              </button>
+              {scheduleWindow?.scheduleWindowMessage && <button className="adm-btn ghost" onClick={clearScheduleWindow}>Clear banner</button>}
+            </div>
           </div>
         </div>
       )}

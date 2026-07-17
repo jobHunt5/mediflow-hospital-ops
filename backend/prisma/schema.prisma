@@ -69,22 +69,26 @@ model Account {
 }
 
 model Worker {
-  id            String          @id @default(cuid())
-  name          String
-  role          String          @default("")
-  zone          String          @default("")
-  shift         String          @default("")
-  phone         String          @default("")
-  status        String          @default("idle")
-  clockedInAt   DateTime?
-  department    Department
-  account       Account?
-  tasks         Task[]
-  leaves        Leave[]
-  availability  Availability[]
-  hoursLog      HoursLog[]
-  notifications Notification[]
-  createdAt     DateTime        @default(now())
+  id                 String         @id @default(cuid())
+  name               String
+  role               String         @default("")
+  zone               String         @default("")
+  shift              String         @default("")
+  phone              String         @default("")
+  status             String         @default("idle")
+  clockedInAt        DateTime?
+  annualLeaveBalance Float          @default(0)
+  annualLeaveTaken   Float          @default(0)
+  department         Department
+  account            Account?
+  tasks              Task[]
+  leaves             Leave[]
+  availability       Availability[]
+  hoursLog           HoursLog[]
+  notifications      Notification[]
+  openShiftsPosted   OpenShift[]    @relation("OpenShiftOwner")
+  openShiftsClaimed  OpenShift[]    @relation("OpenShiftClaimer")
+  createdAt          DateTime       @default(now())
 }
 
 model Task {
@@ -98,6 +102,8 @@ model Task {
   easyWay      String     @default("")
   department   Department
   pinId        String?
+  blocked      Boolean    @default(false)
+  blockedNote  String     @default("")
   createdAt    DateTime   @default(now())
 }
 
@@ -152,17 +158,40 @@ model Closure {
 }
 
 model DeptSetting {
-  department     Department @id
-  showWardRounds Boolean    @default(false)
+  department            Department @id
+  showWardRounds        Boolean    @default(false)
+  scheduleWindowStart   String     @default("")
+  scheduleWindowEnd     String     @default("")
+  scheduleWindowMessage String     @default("")
+}
+
+enum OpenShiftStatus {
+  open
+  claimed
+}
+
+model OpenShift {
+  id          String          @id @default(cuid())
+  department  Department
+  date        String
+  from        String          @default("")
+  to          String          @default("")
+  note        String          @default("")
+  status      OpenShiftStatus @default(open)
+  owner       Worker?         @relation("OpenShiftOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId     String?
+  claimedBy   Worker?         @relation("OpenShiftClaimer", fields: [claimedById], references: [id], onDelete: SetNull)
+  claimedById String?
+  createdAt   DateTime        @default(now())
 }
 
 model Bin {
-  id            String          @id
+  id            String         @id
   name          String
   floor         String
   area          String
-  fillLevel     Int             @default(0)
-  status        BinStatus       @default(empty)
+  fillLevel     Int            @default(0)
+  status        BinStatus      @default(empty)
   notifications Notification[]
 }
 
