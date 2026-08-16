@@ -3,7 +3,7 @@ databases:
     databaseName: mediflow
     user: mediflow
     region: oregon
-    plan: free
+    plan: basic_256mb
 
 services:
   - type: web

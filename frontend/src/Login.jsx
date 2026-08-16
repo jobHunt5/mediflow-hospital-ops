@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
-import MonashLogo from './MonashLogo.jsx';
 import PasswordInput from './PasswordInput.jsx';
 import { DEPARTMENTS, DEPT } from './departments.js';
 import { useTheme } from './useTheme.js';
+
+// ── Quick-login demo mode ──────────────────────────────────────────────
+// Password-based sign-in is temporarily disabled: instead of typing a
+// username/password, each of the 12 seeded accounts (6 depts × admin/worker)
+// gets a one-click button. The original role → department → username/password
+// flow below is left fully intact — flip this back to false to restore it.
+const QUICK_LOGIN_ONLY = true;
+const DEMO_PASSWORD = 'MediFlow2026!';
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
 export default function Login({ onLogin }) {
   const [role, setRole] = useState(null); // 'worker' | 'admin'
@@ -11,6 +19,8 @@ export default function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [quickPending, setQuickPending] = useState(null); // e.g. 'admin-linen'
+  const [quickError, setQuickError] = useState('');
   const { toggle: toggleTheme, isDark } = useTheme();
 
   const back = () => {
@@ -50,6 +60,27 @@ export default function Login({ onLogin }) {
     }
   };
 
+  const quickLogin = async (r, d) => {
+    const key = `${r}-${d}`;
+    setQuickPending(key);
+    setQuickError('');
+    const uname = r === 'admin' ? `${d}-admin` : slug(DEPT[d].workerTitle);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: uname, password: DEMO_PASSWORD }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setQuickError(data.error || 'Sign in failed'); return; }
+      onLogin({ role: data.role, department: data.department, workerId: data.workerId, name: data.name, token: data.token });
+    } catch {
+      setQuickError('Could not reach the server — check your connection and try again.');
+    } finally {
+      setQuickPending(null);
+    }
+  };
+
   return (
     <div className="login-page">
       <button className="theme-toggle login-theme-toggle" onClick={toggleTheme} aria-label="Toggle dark mode" title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
@@ -65,7 +96,6 @@ export default function Login({ onLogin }) {
         <div className="login-visual-blob a" />
         <div className="login-visual-blob b" />
         <div className="login-visual-content">
-          <MonashLogo size={34} showText={false} />
           <h2 className="login-visual-title">Night operations, simplified.</h2>
           <p className="login-visual-copy">
             One place for the environmental services team to clock in, run their rounds,
@@ -91,10 +121,40 @@ export default function Login({ onLogin }) {
 
       <div className="login-card">
         <div className="login-brand">
-          <MonashLogo size={38} subtitle="Monash Health Operations" />
+          <span className="login-brand-name">MediFlow</span>
         </div>
 
-        {!role && (
+        {QUICK_LOGIN_ONLY && (
+          <>
+            <div className="login-quick-grid">
+              <div className="login-quick-group">
+                <div className="login-quick-heading">Admins</div>
+                {DEPARTMENTS.map(d => (
+                  <button
+                    key={`admin-${d.id}`} className="login-dept-card login-dept-card-plain" style={{ '--dept-accent': d.accent }}
+                    onClick={() => quickLogin('admin', d.id)} disabled={!!quickPending}
+                  >
+                    <span className="login-dept-name">{d.managerTitle}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="login-quick-group">
+                <div className="login-quick-heading">Workers</div>
+                {DEPARTMENTS.map(d => (
+                  <button
+                    key={`worker-${d.id}`} className="login-dept-card login-dept-card-plain" style={{ '--dept-accent': d.accent }}
+                    onClick={() => quickLogin('worker', d.id)} disabled={!!quickPending}
+                  >
+                    <span className="login-dept-name">{d.workerTitle}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {quickError && <div className="login-error">{quickError}</div>}
+          </>
+        )}
+
+        {!QUICK_LOGIN_ONLY && !role && (
           <>
             <h1 className="login-title">Sign in</h1>
             <p className="login-sub">Choose how you're working tonight. The Floor Map is available to everyone once you're in.</p>
@@ -117,7 +177,7 @@ export default function Login({ onLogin }) {
           </>
         )}
 
-        {role && !dept && (
+        {!QUICK_LOGIN_ONLY && role && !dept && (
           <>
             <button className="login-back" onClick={back}>← Back</button>
             <h1 className="login-title">Which team?</h1>
@@ -137,7 +197,7 @@ export default function Login({ onLogin }) {
           </>
         )}
 
-        {role && dept && (
+        {!QUICK_LOGIN_ONLY && role && dept && (
           <>
             <button className="login-back" onClick={back}>← Back</button>
             <h1 className="login-title">{DEPT[dept].name}</h1>

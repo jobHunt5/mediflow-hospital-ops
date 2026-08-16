@@ -294,6 +294,13 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 .login-dept-name { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
 .login-dept-summary { font-size: 11px; color: var(--text-muted); line-height: 1.35; }
 .login-dept-arrow { color: var(--text-muted); flex-shrink: 0; }
+.login-dept-card:disabled { opacity: 0.6; cursor: default; transform: none; }
+
+.login-quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-height: 60vh; overflow-y: auto; padding-right: 2px; }
+.login-quick-group { display: flex; flex-direction: column; gap: 8px; }
+.login-quick-heading { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 2px; }
+.login-dept-card-plain { justify-content: center; text-align: center; padding: 10px 12px; }
+.login-dept-card-plain .login-dept-name { font-size: 12.5px; }
 
 .login-enter-btn {
   margin-top: 6px; border: none; border-radius: 14px; padding: 14px; color: #fff; font-size: 14px; font-weight: 700;
@@ -339,6 +346,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-vis
 @media (max-width: 480px) {
   .login-card { padding: 20px; border-radius: 18px; }
   .login-role-grid { grid-template-columns: 1fr; }
+  .login-quick-grid { grid-template-columns: 1fr; max-height: none; }
 }
 
 /* ── Wayfinding closure banner ── */
